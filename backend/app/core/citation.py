@@ -24,15 +24,34 @@ class CitationVerifier:
     """
 
     # 法条引用的正则模式
-    # 匹配格式如：《中华人民共和国民法典》第一千二百三十四条
+    # 支持多种引用格式：书名号格式、无书名号格式、简称格式、纯条款格式
     CITATION_PATTERNS = [
-        # 《法律名称》第X条
-        re.compile(r"《([^》]+)》第([一二三四五六七八九十百千万零\d]+)条"),
-        # 《法律名称》第X条第X款
+        # 《法律名称》第X条第X款（需放在第X条之前，优先匹配更精确的模式）
         re.compile(r"《([^》]+)》第([一二三四五六七八九十百千万零\d]+)条第([一二三四五六七八九十百千万零\d]+)款"),
         # 《法律名称》第X章第X条
         re.compile(r"《([^》]+)》第([一二三四五六七八九十百千万零\d]+)章第([一二三四五六七八九十百千万零\d]+)条"),
+        # 《法律名称》第X条
+        re.compile(r"《([^》]+)》第([一二三四五六七八九十百千万零\d]+)条"),
+        # 无书名号：法律名称 第X条（中间有空格，法律名称以法/条例/规定/办法/解释/通则/典结尾）
+        re.compile(r"([\u4e00-\u9fff]+(?:法|条例|规定|办法|解释|通则|典))\s+第([一二三四五六七八九十百千万零\d]+)条"),
+        # 简称+数字条款：民法典第585条（法律简称后直接跟第X条，无空格）
+        re.compile(r"([\u4e00-\u9fff]+(?:法|典))第(\d+)条"),
+        # 第X条第X款（无法律名称时从上下文推断）
+        re.compile(r"第([一二三四五六七八九十百千万零\d]+)条第([一二三四五六七八九十百千万零\d]+)款"),
     ]
+
+    # 法律名称简称到全称的映射表，用于从简称推断完整法律名称
+    LAW_NAME_ALIASES: dict[str, str] = {
+        "民法典": "中华人民共和国民法典",
+        "劳动法": "中华人民共和国劳动法",
+        "劳动合同法": "中华人民共和国劳动合同法",
+        "公司法": "中华人民共和国公司法",
+        "建筑法": "中华人民共和国建筑法",
+        "刑法": "中华人民共和国刑法",
+        "银行法": "中华人民共和国商业银行法",
+        "证券法": "中华人民共和国证券法",
+        "保险法": "中华人民共和国保险法",
+    }
 
     def __init__(self) -> None:
         """
@@ -45,7 +64,8 @@ class CitationVerifier:
         从文本中提取法条引用
 
         使用正则表达式匹配常见的法条引用格式，
-        提取法律名称和条款编号。
+        提取法律名称和条款编号。对于无法律名称的匹配，
+        尝试从上文推断法律名称。
 
         Args:
             text: 需要提取法条引用的文本
@@ -59,22 +79,99 @@ class CitationVerifier:
         for pattern in self.CITATION_PATTERNS:
             matches = pattern.findall(text)
             for match in matches:
-                law_name = match[0]
-                article_number = f"第{match[1]}条"
-                if len(match) > 2:
-                    # 有更细粒度的条款信息
-                    pass
+                law_name = ""
+                article_number = ""
+                paragraph_number = ""
 
-                citation_key = f"{law_name}_{article_number}"
+                # 根据匹配组数判断匹配模式
+                if len(match) == 3:
+                    # 三组匹配：《法律名》第X条第X款 / 《法律名》第X章第X条 / 第X条第X款
+                    if pattern == self.CITATION_PATTERNS[5]:
+                        # 纯条款格式：第X条第X款（无法律名称）
+                        article_number = f"第{match[0]}条"
+                        paragraph_number = f"第{match[1]}款"
+                        # 尝试从上文推断法律名称
+                        law_name = self._infer_law_name(text, match[0])
+                    else:
+                        # 带法律名称的三组匹配
+                        law_name = match[0]
+                        article_number = f"第{match[1]}条"
+                        paragraph_number = f"第{match[2]}款"
+                elif len(match) == 2:
+                    # 两组匹配：《法律名》第X条 / 无书名号法律名 第X条 / 简称第X条
+                    law_name = match[0]
+                    article_number = f"第{match[1]}条"
+                else:
+                    continue
+
+                # 规范化法律名称：将简称映射为全称
+                law_name = self._normalize_law_name(law_name)
+
+                # 构建完整条款编号
+                full_article = article_number
+                if paragraph_number:
+                    full_article += paragraph_number
+
+                citation_key = f"{law_name}_{full_article}"
                 if citation_key not in seen:
                     seen.add(citation_key)
-                    citations.append({
+                    citation = {
                         "law_name": law_name,
-                        "article_number": article_number,
-                    })
+                        "article_number": full_article,
+                    }
+                    if paragraph_number:
+                        citation["paragraph_number"] = paragraph_number
+                    citations.append(citation)
 
         logger.debug("从文本中提取到 %d 条法条引用", len(citations))
         return citations
+
+    def _normalize_law_name(self, law_name: str) -> str:
+        """
+        规范化法律名称
+
+        将法律名称的简称映射为完整正式名称，
+        如果映射表中没有则原样返回。
+
+        Args:
+            law_name: 原始法律名称（可能是简称）
+
+        Returns:
+            str: 规范化后的法律名称
+        """
+        return self.LAW_NAME_ALIASES.get(law_name, law_name)
+
+    def _infer_law_name(self, text: str, article_number: str) -> str:
+        """
+        从上下文推断法律名称
+
+        当匹配到纯条款格式（如"第585条第2款"）时，
+        在文本中向前搜索最近的法律名称引用。
+
+        Args:
+            text: 完整文本
+            article_number: 条款编号
+
+        Returns:
+            str: 推断出的法律名称，无法推断时返回空字符串
+        """
+        # 在文本中查找所有带书名号的法律名称
+        book_pattern = re.compile(r"《([^》]+)》")
+        book_matches = list(book_pattern.finditer(text))
+
+        if book_matches:
+            # 取最后一个法律名称作为上下文推断结果
+            return book_matches[-1].group(1)
+
+        # 查找无书名号的法律名称
+        no_book_pattern = re.compile(r"([\u4e00-\u9fff]+(?:法|条例|规定|办法|解释|通则|典))")
+        no_book_matches = list(no_book_pattern.finditer(text))
+
+        if no_book_matches:
+            name = no_book_matches[-1].group(1)
+            return self._normalize_law_name(name)
+
+        return ""
 
     async def verify_citation(self, law_name: str, article_number: str) -> dict:
         """

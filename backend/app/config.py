@@ -57,6 +57,20 @@ class Settings(BaseSettings):
         description="用户上传文件目录"
     )
 
+    # ---------- 数据采集配置 ----------
+    CHROMA_CACHE_LIMIT: int = Field(
+        default=256,
+        description="ChromaDB内存缓存限制（MB）"
+    )
+    DATA_BATCH_SIZE: int = Field(
+        default=10,
+        description="Embedding批量大小（火山方舟API限制每次最多10条）"
+    )
+    EMBEDDING_RETRY_MAX: int = Field(
+        default=5,
+        description="Embedding限流重试次数"
+    )
+
     # ---------- 应用配置 ----------
     ENV: str = Field(
         default="development",

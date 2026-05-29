@@ -25,6 +25,7 @@ frontend/.vite/
 backend/data/laws/*.json
 backend/data/cases/*.json
 backend/data/chroma_db/
+data/chroma_db/
 backend/data/*.db
 backend/data/*.db-shm
 backend/data/*.db-wal

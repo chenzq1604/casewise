@@ -183,3 +183,57 @@ export interface ApiResponse<T> {
   /** 响应数据 */
   data: T;
 }
+
+/** 数据采集状态枚举 */
+export type CollectionStatus = 'idle' | 'running' | 'completed' | 'failed';
+
+/**
+ * 数据采集进度
+ * 用于展示采集任务的实时进度信息
+ */
+export interface CollectionProgress {
+  /** 任务唯一标识 */
+  task_id: string;
+  /** 采集状态：空闲/运行中/已完成/失败 */
+  status: CollectionStatus;
+  /** 总条数 */
+  total: number;
+  /** 已完成条数 */
+  completed: number;
+  /** 当前步骤名称 */
+  current_step: string;
+  /** 错误信息列表 */
+  errors: string[];
+  /** 任务开始时间 */
+  started_at: string;
+  /** 任务完成时间 */
+  completed_at: string;
+  /** 选中的法律类型列表 */
+  selected_categories: string[];
+}
+
+/**
+ * 数据库状态
+ * 展示当前法条、案例等数据的统计信息
+ */
+export interface DataStatus {
+  /** 法条总数 */
+  laws_count: number;
+  /** 案例总数 */
+  cases_count: number;
+  /** ChromaDB集合名称列表 */
+  collections: string[];
+  /** 最后更新时间 */
+  last_updated: string;
+}
+
+/**
+ * 法律类型
+ * 描述可采集的法律分类信息
+ */
+export interface LawCategory {
+  /** 法律类型名称 */
+  name: string;
+  /** 法律类型描述 */
+  description: string;
+}

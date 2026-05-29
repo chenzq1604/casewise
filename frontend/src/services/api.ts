@@ -3,19 +3,12 @@
  * 统一管理所有与后端交互的接口
  */
 import axios from 'axios';
-import type {
-  ApiResponse,
-  ChatMessage,
-  ChatHistoryParams,
-  ContractAnalysis,
-  ReviewFeedback,
-  ReviewStats,
-} from '../types';
+import type { CollectionProgress, DataStatus, LawCategory } from '../types';
 
-/** 创建axios实例，baseURL从环境变量读取 */
+/** 创建axios实例，baseURL指向后端根路径，Vite代理会转发/api请求 */
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  timeout: 30000,
+  baseURL: '',
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -41,38 +34,105 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 401未授权时跳转登录
     if (error.response?.status === 401) {
       localStorage.removeItem('casewise_token');
-      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
 );
 
 /**
+ * 法条引用卡片类型（与后端CitationCard对齐）
+ */
+export interface CitationCardData {
+  law_name: string;
+  article_number: string;
+  article_content: string;
+  verification_status: string;
+}
+
+/**
+ * 法律问答响应类型（与后端ChatResponse对齐）
+ */
+export interface ChatResponseData {
+  answer: string;
+  citations: CitationCardData[];
+  session_id: string;
+  compliance_notice: string;
+  created_at: string;
+}
+
+/**
+ * 合同上传响应类型
+ */
+export interface ContractUploadData {
+  file_id: string;
+  filename: string;
+  contract_text: string;
+}
+
+/**
+ * 风险条款类型（与后端RiskItem对齐）
+ */
+export interface RiskItemData {
+  clause_index: number;
+  clause_text: string;
+  risk_level: string;
+  risk_description: string;
+  law_reference: string;
+  suggestion: string;
+}
+
+/**
+ * 合同分析响应类型
+ */
+export interface ContractAnalyzeData {
+  file_id: string;
+  overall_risk_level: string;
+  risk_items: RiskItemData[];
+  summary: string;
+  compliance_notice: string;
+}
+
+/**
+ * 复核反馈提交类型
+ */
+export interface ReviewSubmitData {
+  source_type: string;
+  source_id: number;
+  original_output: string;
+  feedback_type: string;
+  corrected_content?: string;
+  comment?: string;
+  reviewer?: string;
+}
+
+/**
+ * 复核统计数据类型
+ */
+export interface ReviewStatsData {
+  total_feedbacks: number;
+  accepted_count: number;
+  rejected_count: number;
+  acceptance_rate: number;
+  by_source_type: Record<string, { total: number; accepted: number; rate: number }>;
+}
+
+/**
  * 法律问答相关API
  */
 export const chatApi = {
   /**
-   * 发送消息给AI助手
-   * @param content - 用户输入的消息内容
-   * @returns AI回复消息
+   * 发送法律问题给AI助手
+   * @param question - 用户提出的法律问题
+   * @param sessionId - 会话ID（可选）
+   * @returns AI回复（直接对应后端ChatResponse）
    */
-  sendMessage: async (content: string): Promise<ApiResponse<ChatMessage>> => {
-    const response = await apiClient.post('/chat/send', { content });
-    return response.data;
-  },
-
-  /**
-   * 获取对话历史记录
-   * @param params - 分页参数
-   * @returns 对话消息列表
-   */
-  getHistory: async (
-    params: ChatHistoryParams
-  ): Promise<ApiResponse<{ items: ChatMessage[]; total: number }>> => {
-    const response = await apiClient.get('/chat/history', { params });
+  sendMessage: async (question: string, sessionId?: string): Promise<ChatResponseData> => {
+    const response = await apiClient.post<ChatResponseData>('/api/chat', {
+      question,
+      session_id: sessionId || null,
+    });
     return response.data;
   },
 };
@@ -84,14 +144,12 @@ export const contractApi = {
   /**
    * 上传合同文件
    * @param file - 合同文件（PDF/Word）
-   * @returns 上传后的文件标识
+   * @returns 上传后的文件标识和提取的文本
    */
-  uploadContract: async (
-    file: File
-  ): Promise<ApiResponse<{ fileId: string; fileName: string }>> => {
+  uploadContract: async (file: File): Promise<ContractUploadData> => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await apiClient.post('/contract/upload', formData, {
+    const response = await apiClient.post<ContractUploadData>('/api/contract/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
@@ -102,8 +160,10 @@ export const contractApi = {
    * @param fileId - 上传后的文件标识
    * @returns 合同分析结果
    */
-  analyzeContract: async (fileId: string): Promise<ApiResponse<ContractAnalysis>> => {
-    const response = await apiClient.post('/contract/analyze', { fileId });
+  analyzeContract: async (fileId: string): Promise<ContractAnalyzeData> => {
+    const response = await apiClient.post<ContractAnalyzeData>('/api/contract/analyze', {
+      file_id: fileId,
+    });
     return response.data;
   },
 };
@@ -117,10 +177,8 @@ export const reviewApi = {
    * @param feedback - 复核反馈数据
    * @returns 提交结果
    */
-  submitReview: async (
-    feedback: Omit<ReviewFeedback, 'id' | 'reviewedAt'>
-  ): Promise<ApiResponse<ReviewFeedback>> => {
-    const response = await apiClient.post('/review/submit', feedback);
+  submitReview: async (feedback: ReviewSubmitData): Promise<{ message: string; feedback_id: number }> => {
+    const response = await apiClient.post('/api/review', feedback);
     return response.data;
   },
 
@@ -128,10 +186,62 @@ export const reviewApi = {
    * 获取复核统计数据
    * @returns 复核统计信息
    */
-  getStats: async (): Promise<ApiResponse<ReviewStats>> => {
-    const response = await apiClient.get('/review/stats');
+  getStats: async (): Promise<ReviewStatsData> => {
+    const response = await apiClient.get('/api/review/stats');
     return response.data;
   },
 };
 
 export default apiClient;
+
+/**
+ * 数据管理相关API
+ */
+export const dataApi = {
+  /**
+   * 启动数据采集
+   * @param categories - 要采集的法律类型列表
+   * @param limit - 采集数量限制，0表示全量采集
+   * @returns 采集任务信息
+   */
+  startCollect: async (categories: string[], limit: number = 0): Promise<{ task_id: string; message: string }> => {
+    const response = await apiClient.post('/api/data/collect', { categories, limit });
+    return response.data;
+  },
+
+  /**
+   * 查询采集进度
+   * @returns 当前采集进度信息
+   */
+  getProgress: async (): Promise<CollectionProgress> => {
+    const response = await apiClient.get('/api/data/progress');
+    return response.data;
+  },
+
+  /**
+   * 查询数据状态
+   * @returns 当前数据库统计信息
+   */
+  getStatus: async (): Promise<DataStatus> => {
+    const response = await apiClient.get('/api/data/status');
+    return response.data;
+  },
+
+  /**
+   * 获取法律类型列表
+   * @returns 可采集的法律分类列表
+   */
+  getCategories: async (): Promise<LawCategory[]> => {
+    const response = await apiClient.get('/api/data/categories');
+    return response.data;
+  },
+
+  /**
+   * 取消采集任务
+   * @returns 取消结果
+   */
+  cancelCollect: async (): Promise<{ message: string }> => {
+    const response = await apiClient.post('/api/data/cancel');
+    return response.data;
+  },
+};

@@ -12,6 +12,7 @@ import HomePage from './pages/HomePage';
 import ChatPage from './pages/ChatPage';
 import ContractPage from './pages/ContractPage';
 import ReviewPage from './pages/ReviewPage';
+import DataPage from './pages/DataPage';
 
 /**
  * App 根组件
@@ -40,6 +41,8 @@ const App: React.FC = () => {
             <Route path="/contract" element={<ContractPage />} />
             {/* 复核统计页 */}
             <Route path="/review" element={<ReviewPage />} />
+            {/* 数据管理页 */}
+            <Route path="/data" element={<DataPage />} />
           </Routes>
         </AppLayout>
       </BrowserRouter>

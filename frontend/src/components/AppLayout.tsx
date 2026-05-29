@@ -11,6 +11,7 @@ import {
   MessageOutlined,
   FileSearchOutlined,
   BarChartOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -38,6 +39,11 @@ const menuItems = [
     key: '/review',
     icon: <BarChartOutlined />,
     label: '复核统计',
+  },
+  {
+    key: '/data',
+    icon: <DatabaseOutlined />,
+    label: '数据管理',
   },
 ];
 

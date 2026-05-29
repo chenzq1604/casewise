@@ -8,10 +8,32 @@ import { Input, Button, Spin, Empty, Typography } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import ChatBubble from '../components/ChatBubble';
 import { chatApi } from '../services/api';
-import type { ChatMessage, ComplianceInfo } from '../types';
+import type { ChatMessage, ComplianceInfo, Citation } from '../types';
+import type { CitationCardData } from '../services/api';
 
 const { TextArea } = Input;
 const { Paragraph } = Typography;
+
+/**
+ * 将后端CitationCard转换为前端Citation类型
+ * @param card - 后端返回的引用卡片数据
+ * @returns 前端Citation对象
+ */
+function mapCitationCard(card: CitationCardData): Citation {
+  return {
+    id: `cite-${card.law_name}-${card.article_number}`,
+    type: 'law' as const,
+    code: card.article_number,
+    title: `${card.law_name} ${card.article_number}`,
+    summary: card.article_content || '点击查看详情',
+    fullText: card.article_content,
+    verifyStatus: card.verification_status === '已验证'
+      ? 'verified' as const
+      : card.verification_status === '待确认'
+        ? 'pending' as const
+        : 'unverifiable' as const,
+  };
+}
 
 /**
  * ChatPage 法律问答页组件
@@ -24,6 +46,8 @@ const ChatPage: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   /** 是否正在等待AI回复 */
   const [loading, setLoading] = useState(false);
+  /** 当前会话ID */
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
 
   /** 对话区域滚动容器引用 */
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -48,7 +72,6 @@ const ChatPage: React.FC = () => {
    * 将用户消息添加到列表，调用API获取AI回复
    */
   const handleSend = async () => {
-    /** 输入为空时不发送 */
     const trimmed = inputValue.trim();
     if (!trimmed || loading) return;
 
@@ -65,9 +88,28 @@ const ChatPage: React.FC = () => {
     setLoading(true);
 
     try {
-      /** 调用API获取AI回复 */
-      const response = await chatApi.sendMessage(trimmed);
-      const aiMessage = response.data;
+      /** 调用后端API获取AI回复 */
+      const data = await chatApi.sendMessage(trimmed, sessionId);
+
+      /** 保存session_id用于多轮对话 */
+      if (data.session_id) {
+        setSessionId(data.session_id);
+      }
+
+      /** 将后端响应转换为前端ChatMessage格式 */
+      const aiMessage: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: data.answer,
+        timestamp: new Date().toLocaleString('zh-CN'),
+        citations: (data.citations || []).map(mapCitationCard),
+        compliance: {
+          disclaimer: data.compliance_notice || '本内容仅供参考，不构成法律意见',
+          generatedAt: data.created_at || new Date().toLocaleString('zh-CN'),
+          modelVersion: 'Doubao-Seed-2.0-Code',
+          humanReviewed: false,
+        } as ComplianceInfo,
+      };
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
       /** API调用失败时显示错误消息 */
