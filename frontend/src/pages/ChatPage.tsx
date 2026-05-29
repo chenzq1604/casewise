@@ -55,9 +55,20 @@ const ChatPage: React.FC = () => {
   const [streamingCitations, setStreamingCitations] = useState<Citation[]>([]);
   /** 流式输出中的合规声明 */
   const [streamingCompliance, setStreamingCompliance] = useState<ComplianceInfo | null>(null);
-
+  /** 消息唯一ID计数器，避免key重复 */
+  const msgIdCounter = useRef(0);
   /** 对话区域滚动容器引用 */
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 生成唯一消息ID
+   * @param prefix - ID前缀（user/ai/stream/error）
+   * @returns 唯一ID字符串
+   */
+  const nextMsgId = (prefix: string): string => {
+    msgIdCounter.current += 1;
+    return `${prefix}-${Date.now()}-${msgIdCounter.current}`;
+  };
 
   /**
    * 自动滚动到对话区域底部
@@ -89,7 +100,7 @@ const ChatPage: React.FC = () => {
 
     /** 构造用户消息 */
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: nextMsgId('user'),
       role: 'user',
       content: trimmed,
       timestamp: new Date().toLocaleString('zh-CN'),
@@ -104,6 +115,11 @@ const ChatPage: React.FC = () => {
     setStreamingCitations([]);
     setStreamingCompliance(null);
 
+    /** 保存流式完整内容（用于最终消息） */
+    let fullContent = '';
+    let fullCitations: Citation[] = [];
+    let fullCompliance: ComplianceInfo | null = null;
+
     try {
       /** 调用SSE流式接口 */
       await chatApi.sendMessageStream(
@@ -111,65 +127,58 @@ const ChatPage: React.FC = () => {
         sessionId,
         /** onToken: 追加文本到流式内容 */
         (content: string) => {
-          setStreamingContent((prev) => prev + content);
+          fullContent += content;
+          setStreamingContent(fullContent);
         },
         /** onCitation: 收到引用卡片，追加到流式引用列表 */
         (citation: CitationCardData) => {
-          setStreamingCitations((prev) => [...prev, mapCitationCard(citation)]);
+          const mapped = mapCitationCard(citation);
+          fullCitations = [...fullCitations, mapped];
+          setStreamingCitations([...fullCitations]);
         },
         /** onCompliance: 收到合规声明 */
-        (compliance: { notice: string }) => {
-          setStreamingCompliance({
-            disclaimer: compliance.notice || '本内容仅供参考，不构成法律意见',
-            generatedAt: new Date().toLocaleString('zh-CN'),
+        (compliance: { disclaimer?: string; notice?: string; generated_at?: string }) => {
+          fullCompliance = {
+            disclaimer: compliance.disclaimer || compliance.notice || '本内容仅供参考，不构成法律意见',
+            generatedAt: compliance.generated_at || new Date().toLocaleString('zh-CN'),
             modelVersion: 'Doubao-Seed-2.0-Code',
             humanReviewed: false,
-          });
+          };
+          setStreamingCompliance(fullCompliance);
         },
         /** onDone: 流式完成，将完整消息添加到消息列表 */
         (newSessionId: string) => {
-          /** 保存session_id用于多轮对话 */
           if (newSessionId) {
             setSessionId(newSessionId);
           }
 
-          /** 获取当前流式内容，构造完整AI消息 */
-          setStreamingContent((finalContent) => {
-            setStreamingCitations((finalCitations) => {
-              setStreamingCompliance((finalCompliance) => {
-                const aiMessage: ChatMessage = {
-                  id: `ai-${Date.now()}`,
-                  role: 'assistant',
-                  content: finalContent,
-                  timestamp: new Date().toLocaleString('zh-CN'),
-                  citations: finalCitations.length > 0 ? finalCitations : undefined,
-                  compliance: finalCompliance || undefined,
-                };
-                setMessages((prev) => [...prev, aiMessage]);
+          /** 构造完整AI消息 */
+          const aiMessage: ChatMessage = {
+            id: nextMsgId('ai'),
+            role: 'assistant',
+            content: fullContent,
+            timestamp: new Date().toLocaleString('zh-CN'),
+            citations: fullCitations.length > 0 ? fullCitations : undefined,
+            compliance: fullCompliance || undefined,
+          };
+          setMessages((prev) => [...prev, aiMessage]);
 
-                /** 清空流式状态 */
-                setStreamingCitations([]);
-                setStreamingCompliance(null);
-                return null;
-              });
-              return [];
-            });
-            return '';
-          });
-
+          /** 清空流式状态 */
+          setStreamingContent('');
+          setStreamingCitations([]);
+          setStreamingCompliance(null);
           setLoading(false);
         },
         /** onError: 流式错误，fallback到非流式接口 */
         async (error: string) => {
           console.warn('流式请求失败，尝试非流式fallback:', error);
           try {
-            /** fallback: 使用非流式接口 */
             const data = await chatApi.sendMessage(trimmed, sessionId);
             if (data.session_id) {
               setSessionId(data.session_id);
             }
             const aiMessage: ChatMessage = {
-              id: `ai-${Date.now()}`,
+              id: nextMsgId('ai'),
               role: 'assistant',
               content: data.answer,
               timestamp: new Date().toLocaleString('zh-CN'),
@@ -183,9 +192,8 @@ const ChatPage: React.FC = () => {
             };
             setMessages((prev) => [...prev, aiMessage]);
           } catch {
-            /** 非流式接口也失败，显示错误消息 */
             const errorMessage: ChatMessage = {
-              id: `error-${Date.now()}`,
+              id: nextMsgId('error'),
               role: 'assistant',
               content: '抱歉，获取回答时出现错误，请稍后重试。',
               timestamp: new Date().toLocaleString('zh-CN'),
@@ -198,7 +206,6 @@ const ChatPage: React.FC = () => {
             };
             setMessages((prev) => [...prev, errorMessage]);
           } finally {
-            /** 清空流式状态 */
             setStreamingContent('');
             setStreamingCitations([]);
             setStreamingCompliance(null);
@@ -214,7 +221,7 @@ const ChatPage: React.FC = () => {
           setSessionId(data.session_id);
         }
         const aiMessage: ChatMessage = {
-          id: `ai-${Date.now()}`,
+          id: nextMsgId('ai'),
           role: 'assistant',
           content: data.answer,
           timestamp: new Date().toLocaleString('zh-CN'),
@@ -228,9 +235,8 @@ const ChatPage: React.FC = () => {
         };
         setMessages((prev) => [...prev, aiMessage]);
       } catch {
-        /** 非流式接口也失败，显示错误消息 */
         const errorMessage: ChatMessage = {
-          id: `error-${Date.now()}`,
+          id: nextMsgId('error'),
           role: 'assistant',
           content: '抱歉，获取回答时出现错误，请稍后重试。',
           timestamp: new Date().toLocaleString('zh-CN'),
@@ -243,7 +249,6 @@ const ChatPage: React.FC = () => {
         };
         setMessages((prev) => [...prev, errorMessage]);
       } finally {
-        /** 清空流式状态 */
         setStreamingContent('');
         setStreamingCitations([]);
         setStreamingCompliance(null);
@@ -304,7 +309,7 @@ const ChatPage: React.FC = () => {
             {streamingContent && (
               <ChatBubble
                 message={{
-                  id: 'streaming',
+                  id: 'streaming-temp',
                   role: 'assistant',
                   content: streamingContent,
                   timestamp: new Date().toLocaleString('zh-CN'),

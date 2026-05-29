@@ -152,7 +152,7 @@ export const chatApi = {
     sessionId: string | undefined,
     onToken: (content: string) => void,
     onCitation: (citation: CitationCardData) => void,
-    onCompliance: (compliance: { notice: string }) => void,
+    onCompliance: (compliance: { disclaimer?: string; notice?: string; generated_at?: string }) => void,
     onDone: (sessionId: string) => void,
     onError: (error: string) => void,
   ): Promise<void> => {
