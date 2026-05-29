@@ -8,6 +8,7 @@ CaseWise 法律AI工具 - 法律问答业务逻辑模块
 import json
 import logging
 import uuid
+from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 from app.core.llm import get_llm_service
@@ -104,36 +105,87 @@ class ChatService:
 
     async def chat_stream(self, request: ChatRequest) -> AsyncGenerator[str, None]:
         """
-        流式处理法律问答请求
+        流式处理法律问答请求，输出SSE格式事件
 
-        逐步生成回答文本，适用于需要实时展示的场景。
+        完整流程：
+        1. RAG 检索相关法律知识
+        2. 构建带上下文的提示词
+        3. 流式调用 LLM，逐 token 通过 SSE 发送 token 事件
+        4. 收集完整回答用于后续溯源校验
+        5. 溯源校验，发送 citation 事件
+        6. 生成合规声明，发送 compliance 事件
+        7. 发送 done 事件，保存历史记录
+
+        SSE 事件类型：
+        - token: AI 生成的文本片段
+        - citation: 法条引用卡片
+        - compliance: 合规声明
+        - done: 回答完成
+        - error: 错误信息
 
         Args:
             request: 法律问答请求
 
         Yields:
-            str: 逐步生成的回答文本片段
+            str: SSE 格式的事件字符串
         """
         session_id = request.session_id or str(uuid.uuid4())
 
-        # RAG 检索
-        rag_context = await self._retrieve_context(request.question)
+        try:
+            # 1. RAG 检索相关法律知识
+            rag_context = await self._retrieve_context(request.question)
 
-        # 构建消息
-        messages = self._build_messages(request.question, rag_context, session_id)
+            # 2. 构建带上下文的消息
+            messages = self._build_messages(request.question, rag_context, session_id)
 
-        # 流式生成
-        full_answer = ""
-        async for chunk in self.llm_service.chat_completion_stream(
-            messages=messages,
-            temperature=0.3,
-        ):
-            full_answer += chunk
-            yield chunk
+            # 3. 流式调用 LLM，逐 token 发送 SSE 事件
+            full_answer = ""
+            async for chunk in self.llm_service.chat_completion_stream(
+                messages=messages,
+                temperature=0.3,  # 法律场景使用较低温度，保证准确性
+            ):
+                full_answer += chunk
+                yield self._format_sse_event("token", {"content": chunk})
 
-        # 保存历史记录
-        citations = self.citation_verifier.extract_citations(full_answer)
-        await self._save_history(session_id, request.question, full_answer, citations)
+            # 4. 溯源校验，发送 citation 事件
+            citations = await self._verify_citations(full_answer)
+            for citation in citations:
+                yield self._format_sse_event("citation", citation.dict())
+
+            # 5. 生成合规声明，发送 compliance 事件
+            compliance_notice = self.compliance_service.generate_notice(scene="chat")
+            yield self._format_sse_event("compliance", {
+                "disclaimer": compliance_notice,
+                "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            })
+
+            # 6. 发送 done 事件
+            yield self._format_sse_event("done", {"session_id": session_id})
+
+            # 7. 保存历史记录
+            await self._save_history(session_id, request.question, full_answer, citations)
+
+        except Exception as e:
+            logger.error("流式问答处理异常: %s", str(e))
+            yield self._format_sse_event("error", {"message": f"服务异常: {str(e)}"})
+
+    @staticmethod
+    def _format_sse_event(event: str, data: dict) -> str:
+        """
+        格式化 SSE 事件字符串
+
+        将事件类型和数据字典格式化为标准的 Server-Sent Events 格式。
+        SSE 标准格式为：event: <类型>\\ndata: <JSON数据>\\n\\n
+
+        Args:
+            event: 事件类型，如 token、citation、compliance、done、error
+            data: 事件数据字典，将被序列化为 JSON 字符串
+
+        Returns:
+            str: 格式化后的 SSE 事件字符串
+        """
+        data_json = json.dumps(data, ensure_ascii=False)
+        return f"event: {event}\ndata: {data_json}\n\n"
 
     async def _retrieve_context(self, question: str) -> str:
         """

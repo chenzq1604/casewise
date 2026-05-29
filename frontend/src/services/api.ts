@@ -123,7 +123,7 @@ export interface ReviewStatsData {
  */
 export const chatApi = {
   /**
-   * 发送法律问题给AI助手
+   * 发送法律问题给AI助手（非流式，作为fallback使用）
    * @param question - 用户提出的法律问题
    * @param sessionId - 会话ID（可选）
    * @returns AI回复（直接对应后端ChatResponse）
@@ -134,6 +134,113 @@ export const chatApi = {
       session_id: sessionId || null,
     });
     return response.data;
+  },
+
+  /**
+   * 流式发送法律问题，通过SSE实时接收AI回答
+   * 使用 fetch + ReadableStream 消费SSE事件流
+   * @param question - 用户提出的法律问题
+   * @param sessionId - 会话ID（可选，用于多轮对话）
+   * @param onToken - 收到token片段时的回调，参数为文本片段
+   * @param onCitation - 收到引用卡片时的回调，参数为引用数据
+   * @param onCompliance - 收到合规声明时的回调，参数为合规数据
+   * @param onDone - 回答完成时的回调，参数为会话ID
+   * @param onError - 错误回调，参数为错误消息
+   */
+  sendMessageStream: async (
+    question: string,
+    sessionId: string | undefined,
+    onToken: (content: string) => void,
+    onCitation: (citation: CitationCardData) => void,
+    onCompliance: (compliance: { notice: string }) => void,
+    onDone: (sessionId: string) => void,
+    onError: (error: string) => void,
+  ): Promise<void> => {
+    /** 获取认证Token */
+    const token = localStorage.getItem('casewise_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    /** 发起SSE流式请求 */
+    const response = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ question, session_id: sessionId || null }),
+    });
+
+    /** 检查HTTP响应状态 */
+    if (!response.ok) {
+      onError(`请求失败: ${response.status} ${response.statusText}`);
+      return;
+    }
+
+    /** 获取可读流 */
+    const reader = response.body?.getReader();
+    if (!reader) {
+      onError('无法读取响应流');
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    /** 缓冲区，用于处理不完整的SSE行 */
+    let buffer = '';
+    /** 当前SSE事件类型 */
+    let currentEvent = '';
+
+    /** 循环读取流数据 */
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      /** 将二进制数据解码为文本，追加到缓冲区 */
+      buffer += decoder.decode(value, { stream: true });
+
+      /** 按换行符拆分，最后一行可能不完整，保留在缓冲区 */
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      /** 逐行解析SSE事件 */
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          /** 解析事件类型 */
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          /** 解析事件数据 */
+          const data = line.slice(6);
+          try {
+            const parsed = JSON.parse(data);
+            switch (currentEvent) {
+              case 'token':
+                /** 文本片段，追加到流式内容 */
+                onToken(parsed.content || '');
+                break;
+              case 'citation':
+                /** 引用卡片数据 */
+                onCitation(parsed);
+                break;
+              case 'compliance':
+                /** 合规声明数据 */
+                onCompliance(parsed);
+                break;
+              case 'done':
+                /** 回答完成，返回会话ID */
+                onDone(parsed.session_id || '');
+                break;
+              case 'error':
+                /** 服务端错误 */
+                onError(parsed.message || '未知错误');
+                break;
+            }
+          } catch {
+            /** 忽略JSON解析错误，可能是不完整数据 */
+          }
+        }
+      }
+    }
   },
 };
 

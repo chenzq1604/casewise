@@ -2,6 +2,7 @@
  * 对话气泡组件
  * 展示用户消息和AI回复，AI回复附带引用卡片和合规声明
  * 用户消息靠右蓝色，AI回复靠左灰色
+ * AI回复使用ReactMarkdown渲染，支持GFM语法
  */
 import React from 'react';
 import { Avatar } from 'antd';
@@ -9,6 +10,8 @@ import {
   UserOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../types';
 import CitationCard from './CitationCard';
 import ComplianceTag from './ComplianceTag';
@@ -17,14 +20,16 @@ import ComplianceTag from './ComplianceTag';
 interface ChatBubbleProps {
   /** 消息数据 */
   message: ChatMessage;
+  /** 是否正在流式输出（显示闪烁光标） */
+  streaming?: boolean;
 }
 
 /**
  * ChatBubble 对话气泡组件
  * 根据消息角色（用户/AI）渲染不同样式的气泡
- * AI回复额外展示引用卡片和合规声明
+ * AI回复使用Markdown渲染，额外展示引用卡片和合规声明
  */
-const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
+const ChatBubble: React.FC<ChatBubbleProps> = ({ message, streaming = false }) => {
   /** 是否为用户消息 */
   const isUser = message.role === 'user';
 
@@ -41,7 +46,17 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => {
       <div style={{ maxWidth: '80%' }}>
         {/* 消息气泡 */}
         <div className={`chat-bubble ${isUser ? 'bubble-user' : 'bubble-assistant'}`}>
-          {message.content}
+          {isUser ? (
+            /* 用户消息：纯文本渲染 */
+            message.content
+          ) : (
+            /* AI消息：Markdown渲染 */
+            <div className={`markdown-body ${streaming ? 'typing-cursor' : ''}`}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
 
         {/* AI回复附加内容：引用卡片 + 合规声明 */}

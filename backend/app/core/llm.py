@@ -102,7 +102,7 @@ class LLMService:
                     yield chunk.choices[0].delta.content
         except Exception as e:
             logger.error("LLM 流式调用失败: %s", str(e))
-            yield f"[错误] LLM 调用失败: {str(e)}"
+            yield "\n\n[错误] AI服务暂时不可用，请稍后重试。"
 
     async def chat_with_system(
         self,

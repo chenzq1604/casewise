@@ -2,9 +2,10 @@
  * 法律问答页
  * 顶部对话区域，底部输入框
  * AI回答附带法条/判例引用卡片和合规声明
+ * 支持SSE流式接收，实时展示AI回答
  */
-import React, { useState, useRef, useEffect } from 'react';
-import { Input, Button, Spin, Empty, Typography } from 'antd';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Input, Button, Empty, Typography } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import ChatBubble from '../components/ChatBubble';
 import { chatApi } from '../services/api';
@@ -37,7 +38,7 @@ function mapCitationCard(card: CitationCardData): Citation {
 
 /**
  * ChatPage 法律问答页组件
- * 提供与AI助手的对话交互界面
+ * 提供与AI助手的对话交互界面，支持流式接收
  */
 const ChatPage: React.FC = () => {
   /** 对话消息列表 */
@@ -48,28 +49,39 @@ const ChatPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   /** 当前会话ID */
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  /** 流式输出中的文本内容，实时拼接 */
+  const [streamingContent, setStreamingContent] = useState('');
+  /** 流式输出中的引用卡片列表 */
+  const [streamingCitations, setStreamingCitations] = useState<Citation[]>([]);
+  /** 流式输出中的合规声明 */
+  const [streamingCompliance, setStreamingCompliance] = useState<ComplianceInfo | null>(null);
 
   /** 对话区域滚动容器引用 */
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   /**
    * 自动滚动到对话区域底部
-   * 每次消息更新后调用
+   * 每次消息更新或流式内容更新后调用
    */
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  };
+  }, []);
 
   /** 消息更新时自动滚动到底部 */
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
+
+  /** 流式内容更新时自动滚动到底部 */
+  useEffect(() => {
+    scrollToBottom();
+  }, [streamingContent, scrollToBottom]);
 
   /**
-   * 发送消息
-   * 将用户消息添加到列表，调用API获取AI回复
+   * 发送消息（流式接收）
+   * 优先使用SSE流式接口，失败时fallback到非流式接口
    */
   const handleSend = async () => {
     const trimmed = inputValue.trim();
@@ -87,47 +99,156 @@ const ChatPage: React.FC = () => {
     setInputValue('');
     setLoading(true);
 
+    /** 重置流式状态 */
+    setStreamingContent('');
+    setStreamingCitations([]);
+    setStreamingCompliance(null);
+
     try {
-      /** 调用后端API获取AI回复 */
-      const data = await chatApi.sendMessage(trimmed, sessionId);
+      /** 调用SSE流式接口 */
+      await chatApi.sendMessageStream(
+        trimmed,
+        sessionId,
+        /** onToken: 追加文本到流式内容 */
+        (content: string) => {
+          setStreamingContent((prev) => prev + content);
+        },
+        /** onCitation: 收到引用卡片，追加到流式引用列表 */
+        (citation: CitationCardData) => {
+          setStreamingCitations((prev) => [...prev, mapCitationCard(citation)]);
+        },
+        /** onCompliance: 收到合规声明 */
+        (compliance: { notice: string }) => {
+          setStreamingCompliance({
+            disclaimer: compliance.notice || '本内容仅供参考，不构成法律意见',
+            generatedAt: new Date().toLocaleString('zh-CN'),
+            modelVersion: 'Doubao-Seed-2.0-Code',
+            humanReviewed: false,
+          });
+        },
+        /** onDone: 流式完成，将完整消息添加到消息列表 */
+        (newSessionId: string) => {
+          /** 保存session_id用于多轮对话 */
+          if (newSessionId) {
+            setSessionId(newSessionId);
+          }
 
-      /** 保存session_id用于多轮对话 */
-      if (data.session_id) {
-        setSessionId(data.session_id);
+          /** 获取当前流式内容，构造完整AI消息 */
+          setStreamingContent((finalContent) => {
+            setStreamingCitations((finalCitations) => {
+              setStreamingCompliance((finalCompliance) => {
+                const aiMessage: ChatMessage = {
+                  id: `ai-${Date.now()}`,
+                  role: 'assistant',
+                  content: finalContent,
+                  timestamp: new Date().toLocaleString('zh-CN'),
+                  citations: finalCitations.length > 0 ? finalCitations : undefined,
+                  compliance: finalCompliance || undefined,
+                };
+                setMessages((prev) => [...prev, aiMessage]);
+
+                /** 清空流式状态 */
+                setStreamingCitations([]);
+                setStreamingCompliance(null);
+                return null;
+              });
+              return [];
+            });
+            return '';
+          });
+
+          setLoading(false);
+        },
+        /** onError: 流式错误，fallback到非流式接口 */
+        async (error: string) => {
+          console.warn('流式请求失败，尝试非流式fallback:', error);
+          try {
+            /** fallback: 使用非流式接口 */
+            const data = await chatApi.sendMessage(trimmed, sessionId);
+            if (data.session_id) {
+              setSessionId(data.session_id);
+            }
+            const aiMessage: ChatMessage = {
+              id: `ai-${Date.now()}`,
+              role: 'assistant',
+              content: data.answer,
+              timestamp: new Date().toLocaleString('zh-CN'),
+              citations: (data.citations || []).map(mapCitationCard),
+              compliance: {
+                disclaimer: data.compliance_notice || '本内容仅供参考，不构成法律意见',
+                generatedAt: data.created_at || new Date().toLocaleString('zh-CN'),
+                modelVersion: 'Doubao-Seed-2.0-Code',
+                humanReviewed: false,
+              } as ComplianceInfo,
+            };
+            setMessages((prev) => [...prev, aiMessage]);
+          } catch {
+            /** 非流式接口也失败，显示错误消息 */
+            const errorMessage: ChatMessage = {
+              id: `error-${Date.now()}`,
+              role: 'assistant',
+              content: '抱歉，获取回答时出现错误，请稍后重试。',
+              timestamp: new Date().toLocaleString('zh-CN'),
+              compliance: {
+                disclaimer: '此消息为系统错误提示，非AI生成内容',
+                generatedAt: new Date().toLocaleString('zh-CN'),
+                modelVersion: '-',
+                humanReviewed: false,
+              } as ComplianceInfo,
+            };
+            setMessages((prev) => [...prev, errorMessage]);
+          } finally {
+            /** 清空流式状态 */
+            setStreamingContent('');
+            setStreamingCitations([]);
+            setStreamingCompliance(null);
+            setLoading(false);
+          }
+        },
+      );
+    } catch {
+      /** 流式请求异常，fallback到非流式接口 */
+      try {
+        const data = await chatApi.sendMessage(trimmed, sessionId);
+        if (data.session_id) {
+          setSessionId(data.session_id);
+        }
+        const aiMessage: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: data.answer,
+          timestamp: new Date().toLocaleString('zh-CN'),
+          citations: (data.citations || []).map(mapCitationCard),
+          compliance: {
+            disclaimer: data.compliance_notice || '本内容仅供参考，不构成法律意见',
+            generatedAt: data.created_at || new Date().toLocaleString('zh-CN'),
+            modelVersion: 'Doubao-Seed-2.0-Code',
+            humanReviewed: false,
+          } as ComplianceInfo,
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+      } catch {
+        /** 非流式接口也失败，显示错误消息 */
+        const errorMessage: ChatMessage = {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: '抱歉，获取回答时出现错误，请稍后重试。',
+          timestamp: new Date().toLocaleString('zh-CN'),
+          compliance: {
+            disclaimer: '此消息为系统错误提示，非AI生成内容',
+            generatedAt: new Date().toLocaleString('zh-CN'),
+            modelVersion: '-',
+            humanReviewed: false,
+          } as ComplianceInfo,
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      } finally {
+        /** 清空流式状态 */
+        setStreamingContent('');
+        setStreamingCitations([]);
+        setStreamingCompliance(null);
+        setLoading(false);
       }
-
-      /** 将后端响应转换为前端ChatMessage格式 */
-      const aiMessage: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: data.answer,
-        timestamp: new Date().toLocaleString('zh-CN'),
-        citations: (data.citations || []).map(mapCitationCard),
-        compliance: {
-          disclaimer: data.compliance_notice || '本内容仅供参考，不构成法律意见',
-          generatedAt: data.created_at || new Date().toLocaleString('zh-CN'),
-          modelVersion: 'Doubao-Seed-2.0-Code',
-          humanReviewed: false,
-        } as ComplianceInfo,
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      /** API调用失败时显示错误消息 */
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: '抱歉，获取回答时出现错误，请稍后重试。',
-        timestamp: new Date().toLocaleString('zh-CN'),
-        compliance: {
-          disclaimer: '此消息为系统错误提示，非AI生成内容',
-          generatedAt: new Date().toLocaleString('zh-CN'),
-          modelVersion: '-',
-          humanReviewed: false,
-        } as ComplianceInfo,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -163,7 +284,7 @@ const ChatPage: React.FC = () => {
           padding: '16px 24px',
         }}
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && !streamingContent ? (
           <Empty
             description="开始与AI助手对话吧"
             style={{ marginTop: 80 }}
@@ -173,16 +294,27 @@ const ChatPage: React.FC = () => {
             </Paragraph>
           </Empty>
         ) : (
-          messages.map((msg) => (
-            <ChatBubble key={msg.id} message={msg} />
-          ))
-        )}
+          <>
+            {/* 已完成的消息列表 */}
+            {messages.map((msg) => (
+              <ChatBubble key={msg.id} message={msg} />
+            ))}
 
-        {/* 加载中提示 */}
-        {loading && (
-          <div style={{ textAlign: 'center', padding: 16 }}>
-            <Spin tip="AI助手正在思考..." />
-          </div>
+            {/* 流式输出中的临时AI消息气泡 */}
+            {streamingContent && (
+              <ChatBubble
+                message={{
+                  id: 'streaming',
+                  role: 'assistant',
+                  content: streamingContent,
+                  timestamp: new Date().toLocaleString('zh-CN'),
+                  citations: streamingCitations.length > 0 ? streamingCitations : undefined,
+                  compliance: streamingCompliance || undefined,
+                }}
+                streaming={true}
+              />
+            )}
+          </>
         )}
       </div>
 
