@@ -1,0 +1,358 @@
+/**
+ * CaseWise 法律AI助手 - 全局样式
+ * 包含响应式布局、移动端适配、组件样式
+ */
+
+/* ==================== 基础重置 ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ==================== 响应式断点：768px ==================== */
+
+/* ==================== 移动端底部Tab栏 ==================== */
+.mobile-tab-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.mobile-tab-bar .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+/* 移动端隐藏侧边栏 */
+@media (max-width: 768px) {
+  .mobile-tab-bar {
+    display: flex;
+  }
+
+  /* 隐藏桌面端侧边栏 */
+  .desktop-sidebar {
+    display: none !important;
+  }
+
+  /* 内容区域去掉左侧边距 */
+  .main-content-area {
+    margin-left: 0 !important;
+    padding-bottom: 60px !important;
+  }
+
+  /* 顶部标题栏简化 */
+  .app-header {
+    padding: 0 12px !important;
+  }
+
+  .app-header .header-title {
+    font-size: 16px !important;
+  }
+}
+
+/* ==================== 引用卡片样式 ==================== */
+.citation-card {
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  transition: all 0.3s ease;
+}
+
+.citation-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+.citation-card .citation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.citation-card .citation-code {
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.citation-card .citation-summary {
+  color: #595959;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.citation-card .citation-full-text {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #434343;
+  white-space: pre-wrap;
+}
+
+/* 法条引用卡片 - 蓝色边框 */
+.citation-card.citation-law {
+  border-left: 3px solid #1890ff;
+}
+
+/* 判例引用卡片 - 橙色边框 */
+.citation-card.citation-case {
+  border-left: 3px solid #fa8c16;
+}
+
+/* ==================== 合规声明样式（灰色小字） ==================== */
+.compliance-disclaimer {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #8c8c8c;
+  line-height: 1.6;
+}
+
+.compliance-disclaimer .disclaimer-icon {
+  margin-right: 4px;
+  color: #bfbfbf;
+}
+
+/* ==================== 对话气泡样式 ==================== */
+.chat-bubble-wrapper {
+  display: flex;
+  margin-bottom: 16px;
+}
+
+.chat-bubble-wrapper.bubble-user {
+  justify-content: flex-end;
+}
+
+.chat-bubble-wrapper.bubble-assistant {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 80%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.chat-bubble.bubble-user {
+  background: #1890ff;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-bubble.bubble-assistant {
+  background: #f5f5f5;
+  color: #262626;
+  border-bottom-left-radius: 4px;
+}
+
+/* 移动端对话气泡宽度调整 */
+@media (max-width: 768px) {
+  .chat-bubble {
+    max-width: 90%;
+  }
+}
+
+/* ==================== 风险卡片样式 ==================== */
+.risk-card {
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.risk-card.risk-high {
+  border-left: 4px solid #ff4d4f;
+}
+
+.risk-card.risk-medium {
+  border-left: 4px solid #faad14;
+}
+
+.risk-card.risk-low {
+  border-left: 4px solid #52c41a;
+}
+
+.risk-card .risk-location {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-bottom: 4px;
+}
+
+.risk-card .risk-description {
+  font-size: 14px;
+  color: #262626;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.risk-card .risk-suggestion {
+  padding: 8px 12px;
+  background: #f6ffed;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #389e0d;
+  line-height: 1.6;
+}
+
+/* ==================== 合同查看器样式 ==================== */
+.contract-viewer {
+  display: flex;
+  gap: 16px;
+  min-height: 400px;
+}
+
+.contract-viewer .contract-original {
+  flex: 1;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+  font-size: 14px;
+  line-height: 2;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  max-height: 600px;
+}
+
+.contract-viewer .contract-annotation {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  max-height: 600px;
+}
+
+/* 移动端合同查看器纵向排列 */
+@media (max-width: 768px) {
+  .contract-viewer {
+    flex-direction: column;
+  }
+
+  .contract-viewer .contract-original,
+  .contract-viewer .contract-annotation {
+    max-height: none;
+  }
+}
+
+/* ==================== 首页入口卡片 ==================== */
+.entry-card {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 12px;
+}
+
+.entry-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.entry-card .entry-card-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.entry-card .entry-card-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.entry-card .entry-card-desc {
+  font-size: 14px;
+  color: #8c8c8c;
+  line-height: 1.6;
+}
+
+/* ==================== 复核标记按钮样式 ==================== */
+.review-mark-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #d9d9d9;
+  background: #fff;
+}
+
+.review-mark-btn:hover {
+  border-color: #1890ff;
+}
+
+.review-mark-btn.mark-accepted {
+  color: #52c41a;
+  border-color: #b7eb8f;
+  background: #f6ffed;
+}
+
+.review-mark-btn.mark-rejected {
+  color: #ff4d4f;
+  border-color: #ffa39e;
+  background: #fff2f0;
+}
+
+/* ==================== 滚动条美化 ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+/* ==================== 通用工具类 ==================== */
+.text-center {
+  text-align: center;
+}
+
+.mt-16 {
+  margin-top: 16px;
+}
+
+.mb-16 {
+  margin-bottom: 16px;
+}
+
+.p-16 {
+  padding: 16px;
+}
+
+/* 移动端间距调整 */
+@media (max-width: 768px) {
+  .mobile-padding {
+    padding: 12px !important;
+  }
+}

@@ -1,0 +1,61 @@
+# 环境变量（含API Key，绝对不能提交）
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 数据文件（太大，不走Git）
+backend/data/laws/*.json
+backend/data/cases/*.json
+backend/data/chroma_db/
+backend/data/*.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+backend/data/*.db-journal
+backend/data/rules/*.csv
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/data/laws/.gitkeep
+!backend/data/cases/.gitkeep
+!backend/data/rules/.gitkeep
+!backend/data/chroma_db/.gitkeep
+
+# 日志
+*.log
+backend/logs/*
+!backend/logs/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时脚本输出
+*.tmp
+
+# Trae规则（本地配置）
+.trae/
