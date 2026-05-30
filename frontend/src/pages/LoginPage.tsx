@@ -76,7 +76,6 @@ const LoginPage: React.FC = () => {
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <SafetyCertificateOutlined style={{ fontSize: 42, color: '#1890ff', marginBottom: 8 }} />
           <Title level={3} style={{ margin: 0, color: '#262626' }}>CaseWise</Title>
-          <Text type="secondary" style={{ fontSize: 14 }}>法律AI助手 · 智能合规审查平台</Text>
         </div>
 
         {mode === 'login' ? (
@@ -133,25 +132,17 @@ const LoginPage: React.FC = () => {
             </Button>
           </Text>
         </div>
-
-        {mode === 'login' && (
-          <>
-            <Divider plain style={{ margin: '12px 0', fontSize: 12, color: '#bfbfbf' }}>演示账号</Divider>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              {ROLE_OPTIONS.map((opt) => (
-                <Tag
-                  key={opt.value}
-                  color={opt.color}
-                  style={{ cursor: 'pointer', margin: 0 }}
-                  onClick={() => form.setFieldsValue({ username: opt.value, password: `${opt.value}123` })}
-                >
-                  {opt.label}: {opt.value} / {opt.value}123
-                </Tag>
-              ))}
-            </div>
-          </>
-        )}
       </Card>
+      <div style={{
+        textAlign: 'center',
+        marginTop: 16,
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 12,
+      }}>
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.85)' }}>
+          粤ICP备2026056746号
+        </a>
+      </div>
     </div>
   );
 };

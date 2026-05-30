@@ -248,9 +248,23 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             background: '#f5f5f5',
             minHeight: 'calc(100vh - 64px)',
             overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
-          {children}
+          <div style={{ flex: 1 }}>
+            {children}
+          </div>
+          <div style={{
+            textAlign: 'center',
+            padding: '16px 0 0',
+            fontSize: 12,
+            color: '#8c8c8c',
+          }}>
+            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" style={{ color: '#8c8c8c' }}>
+              粤ICP备2026056746号
+            </a>
+          </div>
         </Content>
       </Layout>
 
