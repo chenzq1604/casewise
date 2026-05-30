@@ -258,6 +258,19 @@ const ChatPage: React.FC = () => {
   };
 
   /**
+   * 处理AI消息复核反馈
+   * @param messageId - 消息ID
+   * @param status - 复核状态
+   */
+  const handleReview = useCallback((messageId: string, status: 'confirmed' | 'incorrect') => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId ? { ...msg, reviewStatus: status } : msg
+      )
+    );
+  }, []);
+
+  /**
    * 处理键盘事件
    * Enter发送消息，Shift+Enter换行
    * @param e - 键盘事件
@@ -302,7 +315,7 @@ const ChatPage: React.FC = () => {
           <>
             {/* 已完成的消息列表 */}
             {messages.map((msg) => (
-              <ChatBubble key={msg.id} message={msg} />
+              <ChatBubble key={msg.id} message={msg} onReview={handleReview} />
             ))}
 
             {/* 流式输出中的临时AI消息气泡 */}

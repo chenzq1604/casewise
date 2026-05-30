@@ -15,6 +15,7 @@ import ChatPage from './pages/ChatPage';
 import ContractPage from './pages/ContractPage';
 import ReviewPage from './pages/ReviewPage';
 import DataPage from './pages/DataPage';
+import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
 
 /**
@@ -27,6 +28,7 @@ const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/contract': ['admin', 'lawyer', 'client'],
   '/review': ['admin', 'lawyer'],
   '/data': ['admin', 'lawyer'],
+  '/settings': ['admin'],
 };
 
 /**
@@ -98,6 +100,7 @@ const App: React.FC = () => {
                     <Route path="/contract" element={<RoleGuard path="/contract"><ContractPage /></RoleGuard>} />
                     <Route path="/review" element={<RoleGuard path="/review"><ReviewPage /></RoleGuard>} />
                     <Route path="/data" element={<RoleGuard path="/data"><DataPage /></RoleGuard>} />
+                    <Route path="/settings" element={<RoleGuard path="/settings"><SettingsPage /></RoleGuard>} />
                   </Routes>
                 </AppLayout>
               </AuthGuard>

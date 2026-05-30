@@ -6,7 +6,7 @@
  * 根据用户角色动态显示菜单项
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Layout, Menu, Typography, Tag, Dropdown, Avatar, Space } from 'antd';
+import { Layout, Menu, Typography, Tag, Dropdown, Avatar, Space, Modal, Form, Input, App } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   HomeOutlined,
@@ -17,9 +17,12 @@ import {
   LogoutOutlined,
   UserOutlined,
   SettingOutlined,
+  LockOutlined,
+  KeyOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { authApi } from '../services/api';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -42,6 +45,7 @@ const MENU_ROLE_MAP: Record<string, string[]> = {
   '/contract': ['admin', 'lawyer', 'client'],
   '/review': ['admin', 'lawyer'],
   '/data': ['admin', 'lawyer'],
+  '/settings': ['admin'],
 };
 
 /**
@@ -73,6 +77,11 @@ const ALL_MENU_ITEMS = [
     icon: <DatabaseOutlined />,
     label: '数据管理',
   },
+  {
+    key: '/settings',
+    icon: <SettingOutlined />,
+    label: '系统管理',
+  },
 ];
 
 /**
@@ -84,9 +93,14 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout, hasRole } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  /** 修改密码弹窗状态 */
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordForm] = Form.useForm();
 
   const navigate = useNavigate();
   const location = useLocation();
+  const { message } = App.useApp();
 
   /**
    * 根据用户角色过滤菜单项
@@ -137,6 +151,11 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       disabled: true,
     },
     { type: 'divider' },
+    {
+      key: 'changepassword',
+      icon: <KeyOutlined />,
+      label: '修改密码',
+    },
     ...(hasRole('admin')
       ? [{ key: 'settings', icon: <SettingOutlined />, label: '系统管理' }]
       : []),
@@ -152,6 +171,32 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     if (key === 'logout') {
       logout();
       navigate('/');
+    } else if (key === 'settings') {
+      navigate('/settings');
+    } else if (key === 'changepassword') {
+      changePasswordForm.resetFields();
+      setChangePasswordOpen(true);
+    }
+  };
+
+  /**
+   * 处理修改密码
+   */
+  const handleChangePassword = async () => {
+    try {
+      const values = await changePasswordForm.validateFields();
+      setChangePasswordLoading(true);
+      await authApi.changePassword(values.oldPassword, values.newPassword);
+      message.success('密码修改成功');
+      setChangePasswordOpen(false);
+      changePasswordForm.resetFields();
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } };
+        message.error(axiosErr.response?.data?.detail || '密码修改失败');
+      }
+    } finally {
+      setChangePasswordLoading(false);
     }
   };
 
@@ -285,6 +330,62 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           />
         </div>
       )}
+
+      {/* 修改密码弹窗 */}
+      <Modal
+        title="修改密码"
+        open={changePasswordOpen}
+        onOk={handleChangePassword}
+        onCancel={() => {
+          setChangePasswordOpen(false);
+          changePasswordForm.resetFields();
+        }}
+        confirmLoading={changePasswordLoading}
+        okText="确认修改"
+        cancelText="取消"
+      >
+        <Form
+          form={changePasswordForm}
+          layout="vertical"
+          style={{ marginTop: 16 }}
+        >
+          <Form.Item
+            label="旧密码"
+            name="oldPassword"
+            rules={[{ required: true, message: '请输入旧密码' }]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="请输入旧密码" />
+          </Form.Item>
+          <Form.Item
+            label="新密码"
+            name="newPassword"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码至少6个字符' },
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="请输入新密码" />
+          </Form.Item>
+          <Form.Item
+            label="确认新密码"
+            name="confirmPassword"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: '请确认新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('两次输入的密码不一致'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="请再次输入新密码" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Layout>
   );
 };

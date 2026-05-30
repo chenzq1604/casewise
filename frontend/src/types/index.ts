@@ -68,6 +68,8 @@ export interface ChatMessage {
   citations?: Citation[];
   /** 合规声明信息 */
   compliance?: ComplianceInfo;
+  /** 复核状态：confirmed=确认正确, incorrect=标记有误, 未复核则为undefined */
+  reviewStatus?: 'confirmed' | 'incorrect';
 }
 
 /**

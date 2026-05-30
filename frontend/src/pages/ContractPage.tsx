@@ -29,10 +29,12 @@ import {
   ArrowDownOutlined,
   HistoryOutlined,
   EyeOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import {
   contractApi,
   reviewApi,
+  reportApi,
   type ContractAnalyzeData,
   type ContractHistoryItem,
   type ContractReviewDetail,
@@ -376,8 +378,28 @@ const ContractPage: React.FC = () => {
     if (viewingDetail) {
       return (
         <div>
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Button onClick={() => setViewingDetail(null)}>← 返回历史列表</Button>
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={async () => {
+                try {
+                  const blob = await reportApi.exportContractReport(viewingDetail.reviewId);
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `合同审查报告_${viewingDetail.fileName || 'report'}.html`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  message.success('报告导出成功');
+                } catch {
+                  message.error('报告导出失败');
+                }
+              }}
+            >
+              导出报告
+            </Button>
           </div>
           <Row gutter={16} style={{ marginBottom: 16 }}>
             <Col xs={8}>

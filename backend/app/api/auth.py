@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.user import LoginRequest, RegisterRequest, LoginResponse, UserInfo, UserRole
 from app.services.auth_service import get_auth_service
@@ -140,6 +140,117 @@ async def list_users(admin: UserInfo = Depends(require_role(UserRole.ADMIN))) ->
     """
     auth_service = get_auth_service()
     return await auth_service.list_users()
+
+
+class AdminCreateUserRequest(BaseModel):
+    """管理员创建用户请求"""
+    username: str = Field(..., min_length=2, max_length=50, description="用户名")
+    password: str = Field(..., min_length=6, max_length=100, description="密码")
+    role: str = Field(default=UserRole.CLIENT, description="角色：admin/lawyer/client")
+    display_name: str = Field(default="", max_length=100, description="显示名称")
+
+
+@router.post("/admin/create-user", summary="管理员创建用户（允许任意角色）")
+async def admin_create_user(
+    request: AdminCreateUserRequest,
+    admin: UserInfo = Depends(require_role(UserRole.ADMIN)),
+) -> dict:
+    """
+    管理员创建用户接口，允许创建任意角色用户
+
+    与 /register 接口不同，此接口不限制角色类型，
+    管理员可以创建 admin、lawyer、client 任意角色的用户。
+
+    Args:
+        request: 创建用户请求
+        admin: 当前管理员用户
+
+    Returns:
+        dict: 创建结果
+    """
+    if request.role not in (UserRole.ADMIN, UserRole.LAWYER, UserRole.CLIENT):
+        raise HTTPException(status_code=400, detail=f"无效的角色: {request.role}")
+    try:
+        auth_service = get_auth_service()
+        result = await auth_service.register(
+            RegisterRequest(
+                username=request.username,
+                password=request.password,
+                role=request.role,
+                display_name=request.display_name,
+            )
+        )
+        return {"message": "用户创建成功", "user_id": result.user.id, "username": result.user.username}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("管理员创建用户接口异常: %s", str(e))
+        raise HTTPException(status_code=500, detail="创建用户服务异常")
+
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
+    old_password: str = Field(..., min_length=6, max_length=100, description="旧密码")
+    new_password: str = Field(..., min_length=6, max_length=100, description="新密码")
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求"""
+    new_password: str = Field(..., min_length=6, max_length=100, description="新密码")
+
+
+@router.put("/change-password", summary="修改当前用户密码")
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: UserInfo = Depends(get_current_user),
+) -> dict:
+    """
+    修改当前登录用户密码，需验证旧密码
+
+    Args:
+        request: 修改密码请求
+        current_user: 当前登录用户
+
+    Returns:
+        dict: 操作结果
+    """
+    try:
+        auth_service = get_auth_service()
+        await auth_service.change_password(current_user.id, request.old_password, request.new_password)
+        return {"message": "密码修改成功"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("修改密码接口异常: %s", str(e))
+        raise HTTPException(status_code=500, detail="修改密码服务异常")
+
+
+@router.put("/users/{user_id}/reset-password", summary="管理员重置用户密码")
+async def reset_password(
+    user_id: int,
+    request: ResetPasswordRequest,
+    admin: UserInfo = Depends(require_role(UserRole.ADMIN)),
+) -> dict:
+    """
+    管理员重置指定用户密码，无需旧密码
+
+    Args:
+        user_id: 目标用户ID
+        request: 重置密码请求
+        admin: 当前管理员用户
+
+    Returns:
+        dict: 操作结果
+    """
+    try:
+        auth_service = get_auth_service()
+        await auth_service.reset_password(user_id, request.new_password)
+        return {"message": "密码重置成功"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("重置密码接口异常: %s", str(e))
+        raise HTTPException(status_code=500, detail="重置密码服务异常")
 
 
 class ToggleActiveRequest(BaseModel):

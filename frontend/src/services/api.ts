@@ -471,4 +471,120 @@ export const authApi = {
     const response = await apiClient.get('/api/auth/users');
     return response.data;
   },
+
+  /**
+   * 修改当前用户密码
+   * @param oldPassword - 旧密码
+   * @param newPassword - 新密码
+   * @returns 修改结果
+   */
+  changePassword: async (oldPassword: string, newPassword: string): Promise<{ message: string }> => {
+    const response = await apiClient.put('/api/auth/change-password', { old_password: oldPassword, new_password: newPassword });
+    return response.data;
+  },
+
+  /**
+   * 重置用户密码（管理员）
+   * @param userId - 目标用户ID
+   * @param newPassword - 新密码
+   * @returns 重置结果
+   */
+  resetPassword: async (userId: number, newPassword: string): Promise<{ message: string }> => {
+    const response = await apiClient.put(`/api/auth/users/${userId}/reset-password`, { new_password: newPassword });
+    return response.data;
+  },
+
+  /**
+   * 管理员创建用户（允许选择任意角色）
+   * @param data - 用户注册信息
+   * @returns 创建结果
+   */
+  createUser: async (data: { username: string; password: string; role: string; display_name?: string }): Promise<{ message: string; user_id: number; username: string }> => {
+    const response = await apiClient.post('/api/auth/admin/create-user', data);
+    return response.data;
+  },
+
+  /**
+   * 启用/禁用用户（管理员）
+   * @param userId - 目标用户ID
+   * @param isActive - 是否启用
+   * @returns 操作结果
+   */
+  toggleUser: async (userId: number, isActive: boolean): Promise<{ message: string }> => {
+    const response = await apiClient.post(`/api/auth/users/${userId}/toggle`, { is_active: isActive });
+    return response.data;
+  },
+};
+
+/**
+ * 管理员相关API
+ */
+export const adminApi = {
+  /**
+   * 获取模型配置
+   * @returns 当前模型配置
+   */
+  getConfig: async (): Promise<Record<string, string>> => {
+    const response = await apiClient.get('/api/admin/config');
+    return response.data;
+  },
+
+  /**
+   * 更新模型配置
+   * @param data - 配置数据
+   * @returns 更新结果
+   */
+  updateConfig: async (data: Record<string, string>): Promise<{ message: string; updated_keys: string[] }> => {
+    const response = await apiClient.put('/api/admin/config', { items: data });
+    return response.data;
+  },
+
+  /**
+   * 创建数据备份
+   * @returns 备份结果
+   */
+  createBackup: async (): Promise<{ message: string; filename: string }> => {
+    const response = await apiClient.post('/api/admin/backup');
+    return response.data;
+  },
+
+  /**
+   * 获取备份列表
+   * @returns 备份记录列表
+   */
+  listBackups: async (): Promise<{ filename: string; size: number; created_at: string }[]> => {
+    const response = await apiClient.get('/api/admin/backups');
+    return response.data;
+  },
+};
+
+/** 报告导出API */
+export const reportApi = {
+  /**
+   * 导出合同审查报告
+   * @param reviewId - 审查记录ID
+   * @returns HTML报告Blob
+   */
+  exportContractReport: async (reviewId: number): Promise<Blob> => {
+    const response = await apiClient.post(`/api/report/contract/${reviewId}`, null, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  /**
+   * 导出法律问答报告
+   * @param data - 问答数据
+   * @returns HTML报告Blob
+   */
+  exportChatReport: async (data: {
+    question: string;
+    answer: string;
+    citations?: { law_name: string; article_number: string; article_content: string }[];
+  }): Promise<Blob> => {
+    const response = await apiClient.post('/api/report/chat', data, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
 };

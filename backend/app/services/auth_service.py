@@ -196,6 +196,82 @@ class AuthService:
             for row in rows
         ]
 
+    async def change_password(self, user_id: int, old_password: str, new_password: str) -> bool:
+        """
+        修改用户密码（需验证旧密码）
+
+        Args:
+            user_id: 用户ID
+            old_password: 旧密码
+            new_password: 新密码
+
+        Returns:
+            bool: 修改是否成功
+
+        Raises:
+            ValueError: 旧密码错误或用户不存在
+        """
+        db = await get_db()
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT id, password_hash FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+
+        if not row:
+            raise ValueError("用户不存在")
+
+        if not await verify_password_async(old_password, row["password_hash"]):
+            raise ValueError("旧密码错误")
+
+        new_hash = await hash_password_async(new_password)
+        await db.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (new_hash, user_id),
+        )
+        await db.commit()
+
+        logger.info("用户 %d 修改密码成功", user_id)
+        return True
+
+    async def reset_password(self, user_id: int, new_password: str) -> bool:
+        """
+        重置用户密码（管理员操作，无需旧密码）
+
+        Args:
+            user_id: 目标用户ID
+            new_password: 新密码
+
+        Returns:
+            bool: 重置是否成功
+
+        Raises:
+            ValueError: 用户不存在
+        """
+        db = await get_db()
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT id FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+
+        if not row:
+            raise ValueError("用户不存在")
+
+        new_hash = await hash_password_async(new_password)
+        await db.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (new_hash, user_id),
+        )
+        await db.commit()
+
+        logger.info("管理员重置用户 %d 密码成功", user_id)
+        return True
+
     async def toggle_user_active(self, user_id: int, is_active: bool) -> bool:
         """
         启用/禁用用户（管理员功能）

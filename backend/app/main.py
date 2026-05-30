@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings, BASE_DIR
 from app.db.database import init_db, close_db
-from app.api import chat, contract, data, review, auth
+from app.api import chat, contract, data, review, auth, admin, report
 
 # 确保日志目录存在
 (BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
@@ -84,6 +84,8 @@ app.include_router(contract.router)
 app.include_router(review.router)
 app.include_router(data.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(report.router)
 
 
 @app.get("/", tags=["健康检查"])
