@@ -64,15 +64,20 @@ const LoginPage: React.FC = () => {
     <div style={{
       minHeight: '100vh',
       display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
+      flexDirection: 'column',
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: 24,
     }}>
-      <Card
-        style={{ width: 420, maxWidth: '100%', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.12)' }}
-        styles={{ body: { padding: '32px 28px' } }}
-      >
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+      }}>
+        <Card
+          style={{ width: 420, maxWidth: '100%', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.12)' }}
+          styles={{ body: { padding: '32px 28px' } }}
+        >
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <SafetyCertificateOutlined style={{ fontSize: 42, color: '#1890ff', marginBottom: 8 }} />
           <Title level={3} style={{ margin: 0, color: '#262626' }}>CaseWise</Title>
@@ -133,9 +138,10 @@ const LoginPage: React.FC = () => {
           </Text>
         </div>
       </Card>
+      </div>
       <div style={{
         textAlign: 'center',
-        marginTop: 16,
+        padding: '12px 0 16px',
         color: 'rgba(255,255,255,0.85)',
         fontSize: 12,
       }}>
