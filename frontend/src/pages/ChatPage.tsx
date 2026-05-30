@@ -7,6 +7,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Input, Button, Empty, Typography } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
+import { useLocation } from 'react-router-dom';
 import ChatBubble from '../components/ChatBubble';
 import { chatApi } from '../services/api';
 import type { ChatMessage, ComplianceInfo, Citation } from '../types';
@@ -59,6 +60,8 @@ const ChatPage: React.FC = () => {
   const msgIdCounter = useRef(0);
   /** 对话区域滚动容器引用 */
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  /** 路由location，用于接收跳转传来的预填问题 */
+  const location = useLocation();
 
   /**
    * 生成唯一消息ID
@@ -89,6 +92,16 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [streamingContent, scrollToBottom]);
+
+  /** 处理从其他页面跳转传来的预填问题（如法律指引页） */
+  useEffect(() => {
+    const state = location.state as { initialQuestion?: string } | null;
+    if (state?.initialQuestion) {
+      setInputValue(state.initialQuestion);
+      /** 清除location state，避免重复填充 */
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   /**
    * 发送消息（流式接收）

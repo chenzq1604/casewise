@@ -17,6 +17,9 @@ import ReviewPage from './pages/ReviewPage';
 import DataPage from './pages/DataPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
+import GuidePage from './pages/GuidePage';
+import DocumentPage from './pages/DocumentPage';
+import CalculatorPage from './pages/CalculatorPage';
 
 /**
  * 角色权限配置
@@ -26,6 +29,9 @@ const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/': ['admin', 'lawyer', 'client'],
   '/chat': ['admin', 'lawyer', 'client'],
   '/contract': ['admin', 'lawyer', 'client'],
+  '/guide': ['admin', 'lawyer', 'client'],
+  '/document': ['admin', 'lawyer', 'client'],
+  '/calculator': ['admin', 'lawyer', 'client'],
   '/review': ['admin', 'lawyer'],
   '/data': ['admin', 'lawyer'],
   '/settings': ['admin'],
@@ -98,6 +104,9 @@ const App: React.FC = () => {
                     <Route path="/" element={<RoleGuard path="/"><HomePage /></RoleGuard>} />
                     <Route path="/chat" element={<RoleGuard path="/chat"><ChatPage /></RoleGuard>} />
                     <Route path="/contract" element={<RoleGuard path="/contract"><ContractPage /></RoleGuard>} />
+                    <Route path="/guide" element={<RoleGuard path="/guide"><GuidePage /></RoleGuard>} />
+                    <Route path="/document" element={<RoleGuard path="/document"><DocumentPage /></RoleGuard>} />
+                    <Route path="/calculator" element={<RoleGuard path="/calculator"><CalculatorPage /></RoleGuard>} />
                     <Route path="/review" element={<RoleGuard path="/review"><ReviewPage /></RoleGuard>} />
                     <Route path="/data" element={<RoleGuard path="/data"><DataPage /></RoleGuard>} />
                     <Route path="/settings" element={<RoleGuard path="/settings"><SettingsPage /></RoleGuard>} />

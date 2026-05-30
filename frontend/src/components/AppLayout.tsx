@@ -19,6 +19,9 @@ import {
   SettingOutlined,
   LockOutlined,
   KeyOutlined,
+  BookOutlined,
+  FileTextOutlined,
+  CalculatorOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,6 +46,9 @@ const MENU_ROLE_MAP: Record<string, string[]> = {
   '/': ['admin', 'lawyer', 'client'],
   '/chat': ['admin', 'lawyer', 'client'],
   '/contract': ['admin', 'lawyer', 'client'],
+  '/guide': ['admin', 'lawyer', 'client'],
+  '/document': ['admin', 'lawyer', 'client'],
+  '/calculator': ['admin', 'lawyer', 'client'],
   '/review': ['admin', 'lawyer'],
   '/data': ['admin', 'lawyer'],
   '/settings': ['admin'],
@@ -66,6 +72,21 @@ const ALL_MENU_ITEMS = [
     key: '/contract',
     icon: <FileSearchOutlined />,
     label: '合同审查',
+  },
+  {
+    key: '/guide',
+    icon: <BookOutlined />,
+    label: '法律指引',
+  },
+  {
+    key: '/document',
+    icon: <FileTextOutlined />,
+    label: '文书生成',
+  },
+  {
+    key: '/calculator',
+    icon: <CalculatorOutlined />,
+    label: '费用计算',
   },
   {
     key: '/review',
