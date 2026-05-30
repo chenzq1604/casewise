@@ -314,9 +314,19 @@ const ChatPage: React.FC = () => {
         ) : (
           <>
             {/* 已完成的消息列表 */}
-            {messages.map((msg) => (
-              <ChatBubble key={msg.id} message={msg} onReview={handleReview} />
-            ))}
+            {messages.map((msg, idx) => {
+              const prevUserMsg = msg.role === 'assistant' && idx > 0
+                ? messages.slice(0, idx).reverse().find(m => m.role === 'user')
+                : undefined;
+              return (
+                <ChatBubble
+                  key={msg.id}
+                  message={msg}
+                  onReview={handleReview}
+                  question={prevUserMsg?.content}
+                />
+              );
+            })}
 
             {/* 流式输出中的临时AI消息气泡 */}
             {streamingContent && (

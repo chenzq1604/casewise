@@ -26,6 +26,8 @@ interface ChatBubbleProps {
   streaming?: boolean;
   /** 复核回调，通知父组件更新消息状态 */
   onReview?: (messageId: string, status: 'confirmed' | 'incorrect') => void;
+  /** 关联的用户提问内容（用于导出报告） */
+  question?: string;
 }
 
 /**
@@ -33,7 +35,7 @@ interface ChatBubbleProps {
  * 根据消息角色（用户/AI）渲染不同样式的气泡
  * AI回复使用Markdown渲染，额外展示引用卡片、合规声明和复核按钮
  */
-const ChatBubble: React.FC<ChatBubbleProps> = ({ message, streaming = false, onReview }) => {
+const ChatBubble: React.FC<ChatBubbleProps> = ({ message, streaming = false, onReview, question }) => {
   const { message: messageApi } = App.useApp();
   const [reviewLoading, setReviewLoading] = useState(false);
   const isUser = message.role === 'user';
@@ -137,7 +139,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, streaming = false, onR
                 onClick={async () => {
                   try {
                     const blob = await reportApi.exportChatReport({
-                      question: '',
+                          question: question || '',
                       answer: message.content,
                       citations: message.citations?.map((c) => ({
                         law_name: c.title,

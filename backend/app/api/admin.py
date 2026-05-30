@@ -5,14 +5,16 @@ CaseWise 法律AI工具 - 系统管理API路由
 """
 
 import logging
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.models.user import UserInfo, UserRole
-from app.api.auth import require_role
-from app.services.admin_service import get_admin_service
+from app.api.auth import require_role, get_current_user
+from app.services.admin_service import get_admin_service, BACKUP_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -102,3 +104,40 @@ async def list_backups(
     admin_service = get_admin_service()
     backups = await admin_service.list_backups()
     return backups
+
+
+@router.get("/backup/download", summary="下载备份文件")
+async def download_backup(
+    filename: str = Query(..., description="备份文件名"),
+    token: Optional[str] = Query(default=None, description="认证Token（URL方式传递）"),
+    admin: UserInfo = Depends(require_role(UserRole.ADMIN)),
+) -> FileResponse:
+    """
+    下载数据库备份文件，仅管理员可操作
+
+    Args:
+        filename: 备份文件名
+        admin: 当前管理员用户
+
+    Returns:
+        FileResponse: 备份文件
+
+    Raises:
+        HTTPException: 文件不存在或路径非法
+    """
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="非法文件名")
+
+    backup_path = BACKUP_DIR / filename
+
+    if not backup_path.exists():
+        raise HTTPException(status_code=404, detail="备份文件不存在")
+
+    if not str(backup_path.resolve()).startswith(str(BACKUP_DIR.resolve())):
+        raise HTTPException(status_code=403, detail="禁止访问")
+
+    return FileResponse(
+        path=str(backup_path),
+        media_type="application/octet-stream",
+        filename=filename,
+    )

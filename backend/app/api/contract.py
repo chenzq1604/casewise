@@ -6,14 +6,17 @@ CaseWise 法律AI工具 - 合同审查API路由
 - POST /api/contract/analyze: 分析合同内容
 - GET /api/contract/history: 获取审查历史列表
 - GET /api/contract/detail/{review_id}: 获取审查详情
+- GET /api/contract/preview/{file_id}: 预览合同HTML
 """
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, Depends
 from fastapi.responses import FileResponse, HTMLResponse
 
+from app.models.user import UserInfo
+from app.api.auth import get_current_user
 from app.models.contract import (
     ContractUploadResponse,
     ContractAnalyzeRequest,
@@ -23,12 +26,14 @@ from app.services.contract_service import get_contract_service
 
 logger = logging.getLogger(__name__)
 
-# 创建路由器
 router = APIRouter(prefix="/api/contract", tags=["合同审查"])
 
 
 @router.post("/upload", response_model=ContractUploadResponse, summary="上传合同文件")
-async def upload_contract(file: UploadFile = File(..., description="合同文件（支持 PDF、Word、Excel 等格式）")) -> ContractUploadResponse:
+async def upload_contract(
+    file: UploadFile = File(..., description="合同文件（支持 PDF、Word、Excel 等格式）"),
+    current_user: UserInfo = Depends(get_current_user),
+) -> ContractUploadResponse:
     """
     合同文件上传接口
 
@@ -37,6 +42,7 @@ async def upload_contract(file: UploadFile = File(..., description="合同文件
 
     Args:
         file: 上传的合同文件，支持 PDF、Word、Excel 等格式
+        current_user: 当前登录用户
 
     Returns:
         ContractUploadResponse: 包含 file_id、filename、file_size 的响应
@@ -48,12 +54,10 @@ async def upload_contract(file: UploadFile = File(..., description="合同文件
         if not file.filename:
             raise HTTPException(status_code=400, detail="文件名不能为空")
 
-        # 读取文件内容
         file_content = await file.read()
         if not file_content:
             raise HTTPException(status_code=400, detail="文件内容为空")
 
-        # 限制文件大小（10MB）
         max_size = 10 * 1024 * 1024
         if len(file_content) > max_size:
             raise HTTPException(status_code=400, detail="文件大小超过10MB限制")
@@ -70,7 +74,10 @@ async def upload_contract(file: UploadFile = File(..., description="合同文件
 
 
 @router.post("/analyze", response_model=ContractAnalyzeResponse, summary="分析合同内容")
-async def analyze_contract(request: ContractAnalyzeRequest) -> ContractAnalyzeResponse:
+async def analyze_contract(
+    request: ContractAnalyzeRequest,
+    current_user: UserInfo = Depends(get_current_user),
+) -> ContractAnalyzeResponse:
     """
     合同分析接口
 
@@ -79,6 +86,7 @@ async def analyze_contract(request: ContractAnalyzeRequest) -> ContractAnalyzeRe
 
     Args:
         request: 合同分析请求，包含 file_id、contract_type、focus_areas
+        current_user: 当前登录用户
 
     Returns:
         ContractAnalyzeResponse: 包含 summary、risks、overall_risk_level 的响应
@@ -104,6 +112,7 @@ async def analyze_contract(request: ContractAnalyzeRequest) -> ContractAnalyzeRe
 async def get_review_history(
     limit: int = Query(default=20, ge=1, le=100, description="返回条数"),
     offset: int = Query(default=0, ge=0, description="偏移量"),
+    current_user: UserInfo = Depends(get_current_user),
 ) -> list[dict]:
     """
     获取合同审查历史列表
@@ -113,6 +122,7 @@ async def get_review_history(
     Args:
         limit: 返回条数，默认20
         offset: 偏移量，默认0
+        current_user: 当前登录用户
 
     Returns:
         list[dict]: 审查历史记录列表
@@ -126,7 +136,10 @@ async def get_review_history(
 
 
 @router.get("/detail/{review_id}", summary="获取审查详情")
-async def get_review_detail(review_id: int) -> dict:
+async def get_review_detail(
+    review_id: int,
+    current_user: UserInfo = Depends(get_current_user),
+) -> dict:
     """
     获取指定合同审查的详细结果
 
@@ -134,6 +147,7 @@ async def get_review_detail(review_id: int) -> dict:
 
     Args:
         review_id: 审查记录ID
+        current_user: 当前登录用户
 
     Returns:
         dict: 审查详情
@@ -152,7 +166,10 @@ async def get_review_detail(review_id: int) -> dict:
 
 
 @router.get("/preview/{file_id}", summary="预览合同HTML")
-async def preview_contract_html(file_id: str) -> HTMLResponse:
+async def preview_contract_html(
+    file_id: str,
+    current_user: UserInfo = Depends(get_current_user),
+) -> HTMLResponse:
     """
     返回合同的HTML预览文件
 
@@ -161,6 +178,7 @@ async def preview_contract_html(file_id: str) -> HTMLResponse:
 
     Args:
         file_id: 合同文件ID
+        current_user: 当前登录用户
 
     Returns:
         HTMLResponse: HTML内容
@@ -193,7 +211,11 @@ async def preview_contract_html(file_id: str) -> HTMLResponse:
 
 
 @router.get("/preview/{file_id}.files/{file_name:path}", summary="预览合同HTML附属资源")
-async def preview_contract_html_asset(file_id: str, file_name: str) -> FileResponse:
+async def preview_contract_html_asset(
+    file_id: str,
+    file_name: str,
+    current_user: UserInfo = Depends(get_current_user),
+) -> FileResponse:
     """
     返回合同HTML预览的附属资源文件
 
@@ -203,6 +225,7 @@ async def preview_contract_html_asset(file_id: str, file_name: str) -> FileRespo
     Args:
         file_id: 合同文件ID
         file_name: 附属文件相对路径
+        current_user: 当前登录用户
 
     Returns:
         FileResponse: 资源文件

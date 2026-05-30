@@ -9,19 +9,23 @@ CaseWise 法律AI工具 - 复核反馈API路由
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
+from app.models.user import UserInfo
+from app.api.auth import get_current_user
 from app.models.review import ReviewSubmitRequest, ReviewSubmitResponse, ReviewStatsResponse
 from app.services.review_service import get_review_service
 
 logger = logging.getLogger(__name__)
 
-# 创建路由器
 router = APIRouter(prefix="/api/review", tags=["复核反馈"])
 
 
 @router.post("", response_model=ReviewSubmitResponse, summary="提交复核反馈")
-async def submit_review(request: ReviewSubmitRequest) -> ReviewSubmitResponse:
+async def submit_review(
+    request: ReviewSubmitRequest,
+    current_user: UserInfo = Depends(get_current_user),
+) -> ReviewSubmitResponse:
     """
     复核反馈提交接口
 
@@ -30,6 +34,7 @@ async def submit_review(request: ReviewSubmitRequest) -> ReviewSubmitResponse:
 
     Args:
         request: 复核反馈请求，包含 source_type、source_id、feedback_type 等
+        current_user: 当前登录用户
 
     Returns:
         ReviewSubmitResponse: 包含 review_id 和提交结果消息
@@ -38,7 +43,6 @@ async def submit_review(request: ReviewSubmitRequest) -> ReviewSubmitResponse:
         HTTPException: 当提交失败时返回错误
     """
     try:
-        # 参数校验
         if request.feedback_type not in ("corrected", "confirmed", "incorrect"):
             raise HTTPException(
                 status_code=400,
@@ -69,12 +73,17 @@ async def submit_review(request: ReviewSubmitRequest) -> ReviewSubmitResponse:
 
 
 @router.get("/stats", response_model=ReviewStatsResponse, summary="获取采纳率统计")
-async def get_review_stats() -> ReviewStatsResponse:
+async def get_review_stats(
+    current_user: UserInfo = Depends(get_current_user),
+) -> ReviewStatsResponse:
     """
     复核反馈统计接口
 
     返回复核反馈的汇总统计信息，包括总数、各类型数量、采纳率，
     以及按来源类型（chat/contract）分类的统计。
+
+    Args:
+        current_user: 当前登录用户
 
     Returns:
         ReviewStatsResponse: 包含 total_reviews、adoption_rate、by_source_type 的统计响应
