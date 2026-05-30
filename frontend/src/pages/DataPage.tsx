@@ -19,7 +19,7 @@ import {
   Tag,
   Alert,
   Spin,
-  message,
+  App,
   Divider,
 } from 'antd';
 import {
@@ -56,6 +56,7 @@ const POLL_INTERVAL = 2000;
  * 管理法条数据的采集、进度监控和状态展示
  */
 const DataPage: React.FC = () => {
+  const { message } = App.useApp();
   /** 当前数据状态 */
   const [dataStatus, setDataStatus] = useState<DataStatus>({
     laws_count: 0,
@@ -66,7 +67,7 @@ const DataPage: React.FC = () => {
   /** 法律类型列表 */
   const [categories, setCategories] = useState<LawCategory[]>([]);
   /** 选中的法律类型 */
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['民法典']);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(['civil']);
   /** 采集数量限制，0表示全量 */
   const [collectLimit, setCollectLimit] = useState<number>(0);
   /** 当前采集进度 */
@@ -130,7 +131,16 @@ const DataPage: React.FC = () => {
     setCategoriesLoading(true);
     try {
       const data = await dataApi.getCategories();
-      setCategories(data);
+      let list: LawCategory[];
+      if (Array.isArray(data)) {
+        list = data;
+      } else {
+        list = Object.entries(data).map(([key, val]) => ({
+          key,
+          ...(val as { name: string; description: string }),
+        }));
+      }
+      setCategories(list);
     } catch {
       message.error('获取法律类型列表失败');
     } finally {
@@ -407,6 +417,7 @@ const DataPage: React.FC = () => {
         style={{ marginBottom: 24 }}
       >
         <Spin spinning={categoriesLoading} tip="加载法律类型列表...">
+          <div>
           {/* 法律类型选择 */}
           <div style={{ marginBottom: 20 }}>
             <Title level={5} style={{ marginBottom: 12 }}>
@@ -419,8 +430,8 @@ const DataPage: React.FC = () => {
             >
               <Row gutter={[12, 12]}>
                 {categories.map((cat) => (
-                  <Col xs={24} sm={12} md={8} key={cat.name}>
-                    <Checkbox value={cat.name} style={{ alignItems: 'flex-start' }}>
+                  <Col xs={24} sm={12} md={8} key={cat.key}>
+                    <Checkbox value={cat.key} style={{ alignItems: 'flex-start' }}>
                       <div>
                         <Text strong>{cat.name}</Text>
                         <br />
@@ -445,19 +456,16 @@ const DataPage: React.FC = () => {
             <Title level={5} style={{ marginBottom: 12 }}>
               采集数量限制
             </Title>
-            <Space align="center">
+            <Space.Compact>
               <InputNumber
                 min={0}
                 value={collectLimit}
                 onChange={(val) => setCollectLimit(val ?? 0)}
                 disabled={isCollecting}
-                style={{ width: 160 }}
-                addonAfter="条"
+                style={{ width: 120 }}
               />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                0 表示全量采集
-              </Text>
-            </Space>
+              <Button disabled={isCollecting}>条</Button>
+            </Space.Compact>
           </div>
 
           <Divider style={{ margin: '16px 0' }} />
@@ -485,6 +493,7 @@ const DataPage: React.FC = () => {
               取消采集
             </Button>
           </Space>
+          </div>
         </Spin>
       </Card>
 
@@ -584,11 +593,14 @@ const DataPage: React.FC = () => {
               )}
               <Col xs={24} sm={12}>
                 <Text type="secondary">采集类型：</Text>
-                {progress.selected_categories.map((cat) => (
-                  <Tag key={cat} color="blue" style={{ marginLeft: 4 }}>
-                    {cat}
-                  </Tag>
-                ))}
+                {progress.selected_categories.map((cat) => {
+                  const found = categories.find((c) => c.key === cat);
+                  return (
+                    <Tag key={cat} color="blue" style={{ marginLeft: 4 }}>
+                      {found ? found.name : cat}
+                    </Tag>
+                  );
+                })}
               </Col>
             </Row>
 

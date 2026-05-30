@@ -19,6 +19,7 @@ class ContractUploadResponse(BaseModel):
         file_id: 上传文件的唯一标识
         filename: 文件名
         file_size: 文件大小（字节）
+        contract_text: 从文件中提取的文本内容
         upload_time: 上传时间
     """
     file_id: str = Field(
@@ -32,6 +33,14 @@ class ContractUploadResponse(BaseModel):
     file_size: int = Field(
         ...,
         description="文件大小（字节）"
+    )
+    contract_text: str = Field(
+        default="",
+        description="从文件中提取的文本内容"
+    )
+    html_preview: str = Field(
+        default="",
+        description="HTML预览文件的API路径"
     )
     upload_time: datetime = Field(
         default_factory=datetime.now,
@@ -105,6 +114,7 @@ class ContractAnalyzeResponse(BaseModel):
 
     Attributes:
         file_id: 合同文件ID
+        review_id: 审查记录ID（用于复核反馈关联）
         summary: 合同摘要
         risks: 风险条目列表
         overall_risk_level: 整体风险等级
@@ -114,6 +124,10 @@ class ContractAnalyzeResponse(BaseModel):
     file_id: str = Field(
         ...,
         description="合同文件ID"
+    )
+    review_id: int = Field(
+        default=0,
+        description="审查记录ID，用于复核反馈关联"
     )
     summary: str = Field(
         default="",

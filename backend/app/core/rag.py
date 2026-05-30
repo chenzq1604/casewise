@@ -61,8 +61,14 @@ class HybridRAG:
         bm25_path = Path(settings.CHROMA_PERSIST_DIR).parent / "laws" / "bm25_index.pkl"
         if bm25_path.exists():
             try:
-                with open(bm25_path, "rb") as f:
-                    data = pickle.load(f)
+                import json
+                json_path = bm25_path.with_suffix('.json')
+                if json_path.exists():
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                else:
+                    with open(bm25_path, "rb") as f:
+                        data = pickle.load(f)
                 self.bm25 = data.get("bm25")
                 self.corpus = data.get("corpus", [])
                 self.corpus_metadata = data.get("corpus_metadata", [])

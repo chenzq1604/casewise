@@ -551,14 +551,19 @@ class DataCollector:
             bool: 是否成功加载
         """
         try:
-            import pickle
+            import json
             index_path = Path(settings.CHROMA_PERSIST_DIR) / "bm25_index" / "bm25_data.pkl"
-            if not index_path.exists():
+            json_path = index_path.with_suffix('.json')
+            if json_path.exists():
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            elif index_path.exists():
+                import pickle
+                with open(index_path, "rb") as f:
+                    data = pickle.load(f)
+            else:
                 logger.info("BM25 索引文件不存在，跳过加载")
                 return False
-
-            with open(index_path, "rb") as f:
-                data = pickle.load(f)
             self.bm25_corpus = data.get("corpus", [])
             self.bm25_metadata = data.get("metadata", [])
 

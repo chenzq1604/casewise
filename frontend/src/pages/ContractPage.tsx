@@ -1,13 +1,13 @@
 /**
  * 合同审查页
- * 上传区域（支持拖拽上传PDF/Word）
- * 审查结果：风险摘要列表 + 风险详情展开
- * 支持对照模式和批注模式切换
+ * 两个TAB：上传审查 + 历史记录
+ * 上传审查：拖拽上传PDF/Word → 自动分析 → 对照/批注模式查看
+ * 历史记录：审查历史列表 → 查看详情
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
+  Tabs,
   Upload,
-  Button,
   Card,
   Collapse,
   Badge,
@@ -17,61 +17,187 @@ import {
   Row,
   Col,
   Statistic,
-  message,
+  App,
+  Table,
+  Button,
+  Typography,
 } from 'antd';
 import {
   InboxOutlined,
   FileTextOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  HistoryOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
-import { contractApi } from '../services/api';
+import {
+  contractApi,
+  reviewApi,
+  type ContractAnalyzeData,
+  type ContractHistoryItem,
+  type ContractReviewDetail,
+} from '../services/api';
 import ContractViewer from '../components/ContractViewer';
 import RiskCard from '../components/RiskCard';
 import type { ContractAnalysis, RiskLevel, ReviewResult } from '../types';
 
 const { Dragger } = Upload;
+const { Text } = Typography;
+
+/**
+ * 将后端ContractAnalyzeData转换为前端ContractAnalysis
+ * @param data - 后端返回的合同分析数据
+ * @param contractText - 合同原文文本
+ * @returns 前端使用的合同分析结果
+ */
+const adaptAnalysis = (data: ContractAnalyzeData | ContractReviewDetail, contractText: string, htmlPreview?: string): ContractAnalysis => {
+  const riskLevelMap: Record<string, RiskLevel> = { '高': 'high', '中': 'medium', '低': 'low', high: 'high', medium: 'medium', low: 'low' };
+  const risks = data.risks.map((item, idx) => ({
+    id: `risk-${idx}`,
+    level: riskLevelMap[item.risk_level] || 'medium',
+    location: item.clause || `条款 ${idx + 1}`,
+    originalText: item.clause,
+    description: item.risk_description,
+    lawCitations: item.related_law ? [{
+      id: `cite-${idx}`,
+      type: 'law' as const,
+      code: item.related_law,
+      title: item.related_law,
+      summary: item.related_law,
+      verifyStatus: 'pending' as const,
+    }] : [],
+    caseCitations: [],
+    suggestion: item.suggestion,
+  }));
+  const high = risks.filter((r) => r.level === 'high').length;
+  const medium = risks.filter((r) => r.level === 'medium').length;
+  const low = risks.filter((r) => r.level === 'low').length;
+  return {
+    id: data.file_id,
+    fileName: 'filename' in data ? data.filename : data.file_id,
+    status: 'completed' as const,
+    originalText: contractText,
+    htmlPreview: htmlPreview || '',
+    reviewId: 'review_id' in data ? data.review_id : ('id' in data ? data.id : 0),
+    risks,
+    riskSummary: { high, medium, low },
+    analyzedAt: data.analyzed_at || new Date().toISOString(),
+  };
+};
+
+/**
+ * 获取风险等级Tag颜色
+ * @param level - 风险等级
+ */
+const getRiskTagColor = (level: string) => {
+  const map: Record<string, string> = { '高': 'error', '中': 'warning', '低': 'success' };
+  return map[level] || 'default';
+};
+
+/**
+ * 格式化时间字符串
+ * @param timeStr - ISO时间字符串
+ */
+const formatTime = (timeStr: string | null | undefined) => {
+  if (!timeStr) return '-';
+  try {
+    return new Date(timeStr).toLocaleString('zh-CN');
+  } catch {
+    return timeStr;
+  }
+};
 
 /**
  * ContractPage 合同审查页组件
- * 提供合同上传、分析、风险查看功能
  */
 const ContractPage: React.FC = () => {
-  /** 合同分析结果 */
+  const { message } = App.useApp();
+  const [activeTab, setActiveTab] = useState('upload');
   const [analysis, setAnalysis] = useState<ContractAnalysis | null>(null);
-  /** 上传/分析加载状态 */
   const [loading, setLoading] = useState(false);
-  /** 当前展开的风险项ID列表 */
   const [expandedRisks, setExpandedRisks] = useState<string[]>([]);
+  const [historyList, setHistoryList] = useState<ContractHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [viewingDetail, setViewingDetail] = useState<ContractAnalysis | null>(null);
+
+  /**
+   * 渲染风险折叠列表
+   * @param risks - 要渲染的风险项列表
+   */
+  const renderRiskCollapse = (risks: ContractAnalysis['risks']) => {
+    if (risks.length === 0) {
+      return <Empty description="该等级暂无风险条款" />;
+    }
+    return (
+      <Collapse
+        activeKey={expandedRisks}
+        onChange={(keys) => setExpandedRisks(keys as string[])}
+        items={risks.map((risk) => ({
+          key: risk.id,
+          label: (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tag color={getRiskTagColor(risk.level === 'high' ? '高' : risk.level === 'medium' ? '中' : '低')}>
+                {risk.level === 'high' ? '高' : risk.level === 'medium' ? '中' : '低'}
+              </Tag>
+              <span style={{ fontWeight: 500 }}>{risk.description}</span>
+              <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
+                位置：{risk.location}
+              </span>
+            </div>
+          ),
+          children: <RiskCard risk={risk} onReview={handleReview} />,
+        }))}
+      />
+    );
+  };
+
+  /**
+   * 加载审查历史列表
+   */
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await contractApi.getHistory();
+      setHistoryList(data);
+    } catch {
+      message.error('加载审查历史失败');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory();
+      setViewingDetail(null);
+    }
+  }, [activeTab, fetchHistory]);
 
   /**
    * 处理文件上传
-   * 上传成功后自动触发合同分析
-   * @param file - 上传的文件
    */
   const handleUpload = async (file: File) => {
-    /** 校验文件类型 */
     const validTypes = [
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     ];
-    if (!validTypes.includes(file.type)) {
-      message.error('仅支持上传 PDF 或 Word 文件');
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(pdf|doc|docx|xls|xlsx)$/i)) {
+      message.error('仅支持上传 PDF、Word、Excel 格式的文件');
       return;
     }
 
     setLoading(true);
     try {
-      /** 第一步：上传文件 */
       const uploadRes = await contractApi.uploadContract(file);
       message.success('文件上传成功，正在分析...');
 
-      /** 第二步：分析合同 */
-      const analysisRes = await contractApi.analyzeContract(uploadRes.data.fileId);
-      setAnalysis(analysisRes.data);
+      const analysisRes = await contractApi.analyzeContract(uploadRes.file_id);
+      setAnalysis(adaptAnalysis(analysisRes, uploadRes.contract_text, uploadRes.html_preview));
       message.success('合同分析完成');
-    } catch (error) {
+    } catch {
       message.error('合同分析失败，请重试');
     } finally {
       setLoading(false);
@@ -80,45 +206,74 @@ const ContractPage: React.FC = () => {
 
   /**
    * 处理复核操作
-   * @param riskId - 风险项ID
-   * @param result - 复核结果
+   * 调用后端API保存复核反馈，并更新前端状态
    */
-  const handleReview = (riskId: string, result: ReviewResult) => {
-    if (!analysis) return;
+  const handleReview = async (riskId: string, result: ReviewResult) => {
+    const target = viewingDetail || analysis;
+    if (!target) return;
 
-    /** 更新风险项的复核状态 */
-    const updatedRisks = analysis.risks.map((risk) =>
-      risk.id === riskId ? { ...risk, reviewResult: result } : risk
-    );
-    setAnalysis({ ...analysis, risks: updatedRisks });
-    message.success(result === 'accepted' ? '已标记为采纳' : '已标记为误报');
+    const risk = target.risks.find((r) => r.id === riskId);
+    if (!risk) return;
+
+    const feedbackType = result === 'accepted' ? 'confirmed' : 'incorrect';
+
+    try {
+      await reviewApi.submitReview({
+        source_type: 'contract',
+        source_id: target.reviewId,
+        original_output: risk.description,
+        feedback_type: feedbackType,
+        comment: `风险条款：${risk.location}`,
+      });
+
+      const updatedRisks = target.risks.map((r) =>
+        r.id === riskId ? { ...r, reviewResult: result } : r
+      );
+      if (viewingDetail) {
+        setViewingDetail({ ...viewingDetail, risks: updatedRisks });
+      } else {
+        setAnalysis({ ...analysis!, risks: updatedRisks });
+      }
+
+      const remaining = updatedRisks.filter((r) => !r.reviewResult).length;
+      if (remaining > 0) {
+        message.success(
+          result === 'accepted'
+            ? `已采纳，还剩 ${remaining} 条待复核`
+            : `已标记误报，还剩 ${remaining} 条待复核`
+        );
+      } else {
+        message.success('所有风险条款已复核完毕，可前往「复核统计」查看汇总数据');
+      }
+    } catch {
+      message.error('复核反馈提交失败，请重试');
+    }
   };
 
   /**
-   * 获取风险等级对应的Tag颜色
-   * @param level - 风险等级
+   * 查看历史记录详情
    */
-  const getRiskTagColor = (level: RiskLevel) => {
-    const colorMap: Record<RiskLevel, string> = {
-      high: 'error',
-      medium: 'warning',
-      low: 'success',
-    };
-    return colorMap[level];
+  const handleViewDetail = async (reviewId: number) => {
+    try {
+      const detail = await contractApi.getDetail(reviewId);
+      setViewingDetail(adaptAnalysis(detail, detail.contract_text, detail.html_preview));
+    } catch {
+      message.error('加载审查详情失败');
+    }
   };
 
   /**
-   * 渲染上传区域
-   * 支持拖拽上传和点击上传
+   * 渲染上传审查TAB内容
    */
-  const renderUploadArea = () => (
-    <Card style={{ borderRadius: 8 }}>
-      <Dragger
-        accept=".pdf,.doc,.docx"
+  const renderUploadTab = () => (
+    <>
+      <Card style={{ borderRadius: 8 }}>
+        <Dragger
+          accept=".pdf,.doc,.docx,.xls,.xlsx"
         showUploadList={false}
         beforeUpload={(file) => {
           handleUpload(file);
-          return false; // 阻止自动上传
+          return false;
         }}
         disabled={loading}
       >
@@ -129,123 +284,44 @@ const ContractPage: React.FC = () => {
           点击或拖拽文件到此区域上传
         </p>
         <p style={{ fontSize: 13, color: '#8c8c8c' }}>
-          支持 PDF、Word 格式的合同文件
+          支持 PDF、Word（.doc/.docx）、Excel 格式的合同文件
         </p>
-      </Dragger>
-    </Card>
-  );
+        </Dragger>
+      </Card>
 
-  /**
-   * 渲染风险摘要统计
-   * 显示高/中/低风险数量
-   */
-  const renderRiskSummary = () => {
-    if (!analysis) return null;
-
-    return (
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col xs={8} sm={8}>
-          <Card size="small">
-            <Statistic
-              title="高风险"
-              value={analysis.riskSummary.high}
-              valueStyle={{ color: '#ff4d4f' }}
-              prefix={<ArrowUpOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={8} sm={8}>
-          <Card size="small">
-            <Statistic
-              title="中风险"
-              value={analysis.riskSummary.medium}
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={8} sm={8}>
-          <Card size="small">
-            <Statistic
-              title="低风险"
-              value={analysis.riskSummary.low}
-              valueStyle={{ color: '#52c41a' }}
-              prefix={<ArrowDownOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
-    );
-  };
-
-  /**
-   * 渲染风险摘要列表（折叠面板）
-   * 点击展开查看风险详情
-   */
-  const renderRiskList = () => {
-    if (!analysis || analysis.risks.length === 0) return null;
-
-    /** 构建折叠面板项 */
-    const collapseItems = analysis.risks.map((risk) => ({
-      key: risk.id,
-      label: (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Tag color={getRiskTagColor(risk.level)}>
-            {risk.level === 'high' ? '高' : risk.level === 'medium' ? '中' : '低'}
-          </Tag>
-          <span style={{ fontWeight: 500 }}>{risk.description}</span>
-          <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>
-            位置：{risk.location}
-          </span>
-        </div>
-      ),
-      children: <RiskCard risk={risk} onReview={handleReview} />,
-    }));
-
-    return (
-      <Collapse
-        activeKey={expandedRisks}
-        onChange={(keys) => setExpandedRisks(keys as string[])}
-        items={collapseItems}
-        style={{ marginBottom: 16 }}
-      />
-    );
-  };
-
-  return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      {/* 页面标题 */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0 }}>
-          <FileTextOutlined style={{ marginRight: 8 }} />
-          合同审查
-        </h2>
-      </div>
-
-      {/* 上传区域 */}
-      {renderUploadArea()}
-
-      {/* 加载状态 */}
       {loading && (
         <div style={{ textAlign: 'center', padding: 40 }}>
-          <Spin size="large" tip="正在分析合同..." />
+          <Spin size="large" tip="正在分析合同...">
+            <div style={{ minHeight: 100 }} />
+          </Spin>
         </div>
       )}
 
-      {/* 分析结果 */}
       {analysis && !loading && (
         <div style={{ marginTop: 24 }}>
-          {/* 风险摘要统计 */}
-          {renderRiskSummary()}
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col xs={8}>
+              <Card size="small">
+                <Statistic title="高风险" value={analysis.riskSummary.high} valueStyle={{ color: '#ff4d4f' }} prefix={<ArrowUpOutlined />} />
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card size="small">
+                <Statistic title="中风险" value={analysis.riskSummary.medium} valueStyle={{ color: '#faad14' }} />
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card size="small">
+                <Statistic title="低风险" value={analysis.riskSummary.low} valueStyle={{ color: '#52c41a' }} prefix={<ArrowDownOutlined />} />
+              </Card>
+            </Col>
+          </Row>
 
-          {/* 合同查看器（对照/批注模式） */}
           <Card
             title={
               <span>
                 审查结果
-                <Badge
-                  count={analysis.risks.length}
-                  style={{ marginLeft: 8, backgroundColor: '#1890ff' }}
-                />
+                <Badge count={analysis.risks.length} style={{ marginLeft: 8, backgroundColor: '#1890ff' }} />
               </span>
             }
             style={{ borderRadius: 8 }}
@@ -253,23 +329,192 @@ const ContractPage: React.FC = () => {
             <ContractViewer analysis={analysis} onReview={handleReview} />
           </Card>
 
-          {/* 风险摘要列表（折叠面板） */}
-          <Card
-            title="风险摘要列表"
-            style={{ borderRadius: 8, marginTop: 16 }}
-          >
-            {renderRiskList()}
+          <Card title="风险摘要列表" style={{ borderRadius: 8, marginTop: 16 }}>
+            {analysis.risks.length > 0 ? (
+              <Tabs
+                defaultActiveKey="all"
+                items={[
+                  {
+                    key: 'all',
+                    label: <span>全部 <Badge count={analysis.risks.length} style={{ marginLeft: 4 }} /></span>,
+                    children: renderRiskCollapse(analysis.risks),
+                  },
+                  {
+                    key: 'high',
+                    label: <span style={{ color: '#ff4d4f' }}>高风险 <Badge count={analysis.riskSummary.high} style={{ marginLeft: 4, backgroundColor: '#ff4d4f' }} /></span>,
+                    children: renderRiskCollapse(analysis.risks.filter((r) => r.level === 'high')),
+                  },
+                  {
+                    key: 'medium',
+                    label: <span style={{ color: '#faad14' }}>中风险 <Badge count={analysis.riskSummary.medium} style={{ marginLeft: 4, backgroundColor: '#faad14' }} /></span>,
+                    children: renderRiskCollapse(analysis.risks.filter((r) => r.level === 'medium')),
+                  },
+                  {
+                    key: 'low',
+                    label: <span style={{ color: '#52c41a' }}>低风险 <Badge count={analysis.riskSummary.low} style={{ marginLeft: 4, backgroundColor: '#52c41a' }} /></span>,
+                    children: renderRiskCollapse(analysis.risks.filter((r) => r.level === 'low')),
+                  },
+                ]}
+              />
+            ) : (
+              <Empty description="未发现风险条款" />
+            )}
           </Card>
         </div>
       )}
 
-      {/* 无分析结果时的提示 */}
       {!analysis && !loading && (
-        <Empty
-          description="请上传合同文件开始审查"
-          style={{ marginTop: 40 }}
-        />
+        <Empty description="请上传合同文件开始审查" style={{ marginTop: 40 }} />
       )}
+    </>
+  );
+
+  /**
+   * 渲染历史记录TAB内容
+   */
+  const renderHistoryTab = () => {
+    if (viewingDetail) {
+      return (
+        <div>
+          <div style={{ marginBottom: 16 }}>
+            <Button onClick={() => setViewingDetail(null)}>← 返回历史列表</Button>
+          </div>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col xs={8}>
+              <Card size="small">
+                <Statistic title="高风险" value={viewingDetail.riskSummary.high} valueStyle={{ color: '#ff4d4f' }} prefix={<ArrowUpOutlined />} />
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card size="small">
+                <Statistic title="中风险" value={viewingDetail.riskSummary.medium} valueStyle={{ color: '#faad14' }} />
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card size="small">
+                <Statistic title="低风险" value={viewingDetail.riskSummary.low} valueStyle={{ color: '#52c41a' }} prefix={<ArrowDownOutlined />} />
+              </Card>
+            </Col>
+          </Row>
+          <Card
+            title={
+              <span>
+                审查结果
+                <Badge count={viewingDetail.risks.length} style={{ marginLeft: 8, backgroundColor: '#1890ff' }} />
+              </span>
+            }
+            style={{ borderRadius: 8 }}
+          >
+            <ContractViewer analysis={viewingDetail} onReview={handleReview} />
+          </Card>
+        </div>
+      );
+    }
+
+    const columns = [
+      {
+        title: '文件名',
+        dataIndex: 'filename',
+        key: 'filename',
+        ellipsis: true,
+        render: (text: string) => text || <Text type="secondary">未命名</Text>,
+      },
+      {
+        title: '风险等级',
+        dataIndex: 'overall_risk_level',
+        key: 'overall_risk_level',
+        width: 100,
+        render: (level: string) => <Tag color={getRiskTagColor(level)}>{level}</Tag>,
+      },
+      {
+        title: '风险数',
+        dataIndex: 'risk_count',
+        key: 'risk_count',
+        width: 80,
+        align: 'center' as const,
+      },
+      {
+        title: '上传时间',
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 170,
+        render: (text: string) => formatTime(text),
+      },
+      {
+        title: '审查时间',
+        dataIndex: 'analyzed_at',
+        key: 'analyzed_at',
+        width: 170,
+        render: (text: string) => formatTime(text),
+      },
+      {
+        title: '操作',
+        key: 'action',
+        width: 80,
+        render: (_: unknown, record: ContractHistoryItem) => (
+          <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewDetail(record.id)}>
+            查看
+          </Button>
+        ),
+      },
+    ];
+
+    return (
+      <Card style={{ borderRadius: 8 }}>
+        <Spin spinning={historyLoading} tip="加载历史记录...">
+          <div>
+            <Table
+              columns={columns}
+              dataSource={historyList}
+              rowKey="id"
+              pagination={{ pageSize: 10 }}
+              locale={{ emptyText: <Empty description="暂无审查历史" /> }}
+              size="middle"
+            />
+          </div>
+        </Spin>
+      </Card>
+    );
+  };
+
+  const tabItems = [
+    {
+      key: 'upload',
+      label: (
+        <span>
+          <FileTextOutlined style={{ marginRight: 4 }} />
+          上传审查
+        </span>
+      ),
+      children: renderUploadTab(),
+    },
+    {
+      key: 'history',
+      label: (
+        <span>
+          <HistoryOutlined style={{ marginRight: 4 }} />
+          历史记录
+        </span>
+      ),
+      children: renderHistoryTab(),
+    },
+  ];
+
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ margin: 0 }}>
+          <FileTextOutlined style={{ marginRight: 8 }} />
+          合同审查
+        </h2>
+      </div>
+
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={tabItems}
+        size="large"
+      />
     </div>
   );
 };

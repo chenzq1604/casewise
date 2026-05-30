@@ -63,35 +63,72 @@ export interface ChatResponseData {
 }
 
 /**
- * 合同上传响应类型
+ * 合同上传响应类型（与后端ContractUploadResponse对齐）
  */
 export interface ContractUploadData {
   file_id: string;
   filename: string;
+  file_size: number;
   contract_text: string;
+  html_preview: string;
+  upload_time: string;
 }
 
 /**
  * 风险条款类型（与后端RiskItem对齐）
  */
 export interface RiskItemData {
-  clause_index: number;
-  clause_text: string;
+  clause: string;
   risk_level: string;
   risk_description: string;
-  law_reference: string;
   suggestion: string;
+  related_law: string;
 }
 
 /**
- * 合同分析响应类型
+ * 合同分析响应类型（与后端ContractAnalyzeResponse对齐）
  */
 export interface ContractAnalyzeData {
   file_id: string;
-  overall_risk_level: string;
-  risk_items: RiskItemData[];
+  review_id: number;
   summary: string;
+  risks: RiskItemData[];
+  overall_risk_level: string;
   compliance_notice: string;
+  analyzed_at: string;
+}
+
+/**
+ * 合同审查历史记录类型
+ */
+export interface ContractHistoryItem {
+  id: number;
+  file_id: string;
+  filename: string;
+  contract_type: string;
+  summary: string;
+  overall_risk_level: string;
+  risk_count: number;
+  created_at: string;
+  analyzed_at: string;
+}
+
+/**
+ * 合同审查详情类型（与后端get_review_detail对齐）
+ */
+export interface ContractReviewDetail {
+  id: number;
+  file_id: string;
+  filename: string;
+  contract_type: string;
+  summary: string;
+  overall_risk_level: string;
+  risks: RiskItemData[];
+  contract_text: string;
+  html_preview: string;
+  compliance_notice: string;
+  analyzed_at: string;
+  created_at: string;
 }
 
 /**
@@ -111,11 +148,12 @@ export interface ReviewSubmitData {
  * 复核统计数据类型
  */
 export interface ReviewStatsData {
-  total_feedbacks: number;
-  accepted_count: number;
-  rejected_count: number;
-  acceptance_rate: number;
-  by_source_type: Record<string, { total: number; accepted: number; rate: number }>;
+  total_reviews: number;
+  confirmed_count: number;
+  corrected_count: number;
+  incorrect_count: number;
+  adoption_rate: number;
+  by_source_type: Record<string, { total: number; confirmed: number; corrected: number; incorrect: number; adoption_rate: number }>;
 }
 
 /**
@@ -273,6 +311,18 @@ export const contractApi = {
     });
     return response.data;
   },
+
+  getHistory: async (limit: number = 20, offset: number = 0): Promise<ContractHistoryItem[]> => {
+    const response = await apiClient.get<ContractHistoryItem[]>('/api/contract/history', {
+      params: { limit, offset },
+    });
+    return response.data;
+  },
+
+  getDetail: async (reviewId: number): Promise<ContractReviewDetail> => {
+    const response = await apiClient.get<ContractReviewDetail>(`/api/contract/detail/${reviewId}`);
+    return response.data;
+  },
 };
 
 /**
@@ -284,7 +334,7 @@ export const reviewApi = {
    * @param feedback - 复核反馈数据
    * @returns 提交结果
    */
-  submitReview: async (feedback: ReviewSubmitData): Promise<{ message: string; feedback_id: number }> => {
+  submitReview: async (feedback: ReviewSubmitData): Promise<{ message: string; review_id: number }> => {
     const response = await apiClient.post('/api/review', feedback);
     return response.data;
   },
@@ -349,6 +399,76 @@ export const dataApi = {
    */
   cancelCollect: async (): Promise<{ message: string }> => {
     const response = await apiClient.post('/api/data/cancel');
+    return response.data;
+  },
+};
+
+/**
+ * 用户信息类型
+ */
+export interface UserInfo {
+  id: number;
+  username: string;
+  role: string;
+  display_name: string;
+}
+
+/**
+ * 登录响应类型
+ */
+interface LoginResponse {
+  access_token: string;
+  token_type: string;
+  user: UserInfo;
+}
+
+/**
+ * 用户认证相关API
+ */
+export const authApi = {
+  /**
+   * 用户登录
+   * @param username - 用户名
+   * @param password - 密码
+   * @returns 登录响应（含Token和用户信息）
+   */
+  login: async (username: string, password: string): Promise<LoginResponse> => {
+    const response = await apiClient.post('/api/auth/login', { username, password });
+    return response.data;
+  },
+
+  /**
+   * 用户注册
+   * @param data - 注册信息
+   * @returns 登录响应（含Token和用户信息）
+   */
+  register: async (data: { username: string; password: string; role: string; display_name?: string }): Promise<LoginResponse> => {
+    const response = await apiClient.post('/api/auth/register', data);
+    return response.data;
+  },
+
+  /**
+   * 获取当前用户信息
+   * @param token - JWT Token
+   * @returns 用户信息，失败返回null
+   */
+  getMe: async (token: string): Promise<UserInfo | null> => {
+    try {
+      const response = await apiClient.get('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return response.data;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * 获取用户列表（管理员）
+   * @returns 用户列表
+   */
+  listUsers: async (): Promise<Record<string, unknown>[]> => {
+    const response = await apiClient.get('/api/auth/users');
     return response.data;
   },
 };

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings, BASE_DIR
 from app.db.database import init_db, close_db
-from app.api import chat, contract, review, data
+from app.api import chat, contract, data, review, auth
 
 # 确保日志目录存在
 (BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
@@ -71,7 +71,7 @@ app = FastAPI(
 # 配置 CORS（跨域资源共享）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if not settings.is_production() else [],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"] if not settings.is_production() else [],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -83,6 +83,7 @@ app.include_router(chat.router)
 app.include_router(contract.router)
 app.include_router(review.router)
 app.include_router(data.router)
+app.include_router(auth.router)
 
 
 @app.get("/", tags=["健康检查"])

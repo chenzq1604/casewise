@@ -3,23 +3,51 @@
  * 桌面端：左侧导航栏 + 顶部标题栏 + 内容区
  * 移动端：顶部标题栏 + 内容区 + 底部Tab栏
  * 响应式断点：768px
+ * 根据用户角色动态显示菜单项
  */
-import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Typography } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Layout, Menu, Typography, Tag, Dropdown, Avatar, Space } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   HomeOutlined,
   MessageOutlined,
   FileSearchOutlined,
   BarChartOutlined,
   DatabaseOutlined,
+  LogoutOutlined,
+  UserOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Header, Sider, Content } = Layout;
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
-/** 导航菜单项配置 */
-const menuItems = [
+/**
+ * 角色标签颜色映射
+ */
+const ROLE_TAG_MAP: Record<string, { color: string; label: string }> = {
+  admin: { color: 'red', label: '管理员' },
+  lawyer: { color: 'green', label: '律师' },
+  client: { color: 'blue', label: '客户' },
+};
+
+/**
+ * 菜单项允许访问的角色配置
+ */
+const MENU_ROLE_MAP: Record<string, string[]> = {
+  '/': ['admin', 'lawyer', 'client'],
+  '/chat': ['admin', 'lawyer', 'client'],
+  '/contract': ['admin', 'lawyer', 'client'],
+  '/review': ['admin', 'lawyer'],
+  '/data': ['admin', 'lawyer'],
+};
+
+/**
+ * 全部菜单项定义
+ */
+const ALL_MENU_ITEMS = [
   {
     key: '/',
     icon: <HomeOutlined />,
@@ -47,58 +75,87 @@ const menuItems = [
   },
 ];
 
-/** 底部Tab栏菜单项（与侧边栏一致） */
-const tabItems = menuItems.map((item) => ({
-  key: item.key,
-  label: item.label,
-  icon: item.icon,
-}));
-
 /**
  * AppLayout 全局布局组件
  * 管理侧边栏/底部Tab导航、顶部标题栏和内容区域
+ * 根据用户角色动态过滤菜单项
  */
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  /** 侧边栏折叠状态 */
+  const { user, logout, hasRole } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
-  /** 是否为移动端视图 */
   const [isMobile, setIsMobile] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
 
   /**
-   * 监听窗口尺寸变化，判断是否为移动端
-   * 断点：768px
+   * 根据用户角色过滤菜单项
    */
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768);
-    };
+  const menuItems = useMemo(() => {
+    if (!user) return ALL_MENU_ITEMS;
+    return ALL_MENU_ITEMS.filter((item) => {
+      const allowedRoles = MENU_ROLE_MAP[item.key] || ['admin', 'lawyer', 'client'];
+      return allowedRoles.includes(user.role);
+    });
+  }, [user]);
 
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-
-    return () => {
-      window.removeEventListener('resize', checkMobile);
-    };
-  }, []);
+  /** 底部Tab栏菜单项 */
+  const tabItems = useMemo(() => menuItems.map((item) => ({
+    key: item.key,
+    label: item.label,
+    icon: item.icon,
+  })), [menuItems]);
 
   /**
-   * 处理侧边栏菜单点击
-   * @param info - 菜单点击信息
+   * 监听窗口尺寸变化，判断是否为移动端
    */
-  const handleMenuClick = (info: { key: string }) => {
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const handleMenuClick: MenuProps['onClick'] = (info) => {
     navigate(info.key);
   };
 
   /**
-   * 处理底部Tab栏切换
-   * @param key - 选中的Tab键
+   * 用户下拉菜单
    */
-  const handleTabChange = (key: string) => {
-    navigate(key);
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'userinfo',
+      label: (
+        <Space direction="vertical" size={0} style={{ padding: '4px 0' }}>
+          <Text strong>{user?.display_name || user?.username}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {user?.username} · {ROLE_TAG_MAP[user?.role || 'client']?.label}
+          </Text>
+        </Space>
+      ),
+      disabled: true,
+    },
+    { type: 'divider' },
+    ...(hasRole('admin')
+      ? [{ key: 'settings', icon: <SettingOutlined />, label: '系统管理' }]
+      : []),
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      danger: true,
+    },
+  ];
+
+  const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'logout') {
+      logout();
+      navigate('/');
+    }
   };
+
+  const roleInfo = ROLE_TAG_MAP[user?.role || 'client'];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -110,11 +167,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           collapsed={collapsed}
           onCollapse={setCollapsed}
           theme="light"
-          style={{
-            borderRight: '1px solid #f0f0f0',
-          }}
+          style={{ borderRight: '1px solid #f0f0f0' }}
         >
-          {/* 侧边栏Logo区域 */}
           <div
             style={{
               height: 64,
@@ -137,7 +191,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </Title>
           </div>
 
-          {/* 导航菜单 */}
           <Menu
             mode="inline"
             selectedKeys={[location.pathname]}
@@ -157,6 +210,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             padding: '0 24px',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             borderBottom: '1px solid #f0f0f0',
             height: 64,
           }}
@@ -168,6 +222,22 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           >
             CaseWise 法律AI助手
           </Title>
+
+          {/* 用户信息区域 */}
+          <Dropdown
+            menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
+            placement="bottomRight"
+          >
+            <Space style={{ cursor: 'pointer' }}>
+              <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
+              <span style={{ fontSize: 14, color: '#262626' }}>
+                {user?.display_name || user?.username}
+              </span>
+              <Tag color={roleInfo?.color} style={{ margin: 0, fontSize: 11 }}>
+                {roleInfo?.label}
+              </Tag>
+            </Space>
+          </Dropdown>
         </Header>
 
         {/* 内容区域 */}
@@ -191,7 +261,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             mode="horizontal"
             selectedKeys={[location.pathname]}
             items={tabItems}
-            onClick={handleTabChange}
+            onClick={handleMenuClick}
             style={{
               width: '100%',
               display: 'flex',

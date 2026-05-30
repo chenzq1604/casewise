@@ -108,6 +108,10 @@ export interface ContractAnalysis {
   status: 'analyzing' | 'completed' | 'failed';
   /** 合同原文文本 */
   originalText: string;
+  /** HTML预览路径（Word渲染） */
+  htmlPreview: string;
+  /** 审查记录ID（用于复核反馈关联） */
+  reviewId: number;
   /** 风险条款列表 */
   risks: RiskItem[];
   /** 风险摘要统计 */
@@ -185,7 +189,7 @@ export interface ApiResponse<T> {
 }
 
 /** 数据采集状态枚举 */
-export type CollectionStatus = 'idle' | 'running' | 'completed' | 'failed';
+export type CollectionStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 /**
  * 数据采集进度
@@ -232,6 +236,8 @@ export interface DataStatus {
  * 描述可采集的法律分类信息
  */
 export interface LawCategory {
+  /** 法律类型键名（如 civil, labor） */
+  key: string;
   /** 法律类型名称 */
   name: string;
   /** 法律类型描述 */
